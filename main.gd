@@ -614,7 +614,9 @@ func _build_character_data() -> void:
 func _build_character_selection_panel(parent: Node) -> void:
 	selection_stats_panel = Panel.new()
 	selection_stats_panel.position = Vector2(955, 160)
-	selection_stats_panel.size = Vector2(305, 480)
+	# Keep the panel above the bottom menu buttons. The content ends at the
+	# skill row, so a shorter panel gives the selection screen clear separation.
+	selection_stats_panel.size = Vector2(305, 455)
 	var panel_style := StyleBoxFlat.new()
 	panel_style.bg_color = Color(0.025, 0.055, 0.07, 0.96)
 	panel_style.border_color = Color("347d78")
@@ -646,8 +648,11 @@ func _build_character_selection_panel(parent: Node) -> void:
 	selection_description.size = Vector2(190, 70)
 	selection_description.add_theme_font_size_override("font_size", 11)
 	selection_description.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	selection_description.clip_text = false
-	selection_description.text_overrun_behavior = TextServer.OVERRUN_NO_TRIMMING
+	# Never allow character descriptions to draw outside the statistics panel.
+	# Word wrapping keeps the text readable and ellipsis handles descriptions
+	# that are longer than the reserved portrait area.
+	selection_description.clip_text = true
+	selection_description.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	var stat_names := ["Vida máxima", "Ataque", "Defensa", "Velocidad", "Alcance", "Crítico"]
 	var stat_icon_paths := {
 		"Vida máxima": "res://assets/ui/stats/stat_health.png",
