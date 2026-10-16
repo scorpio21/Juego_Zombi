@@ -133,7 +133,7 @@ El bestiario registra enemigos cuando mueren. Incluye datos como nombre, nivel, 
 
 ### Menú principal
 
-![Menú principal](docs/images/banner-noche-de-los-infectados.png)
+![Menú principal](assets/ui/start_menu_mockup.png)
 
 ### Capturas
 
