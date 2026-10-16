@@ -682,7 +682,7 @@ func _build_character_selection_panel(parent: Node) -> void:
 		"Alcance": "res://assets/ui/stats/stat_range.png",
 		"Crítico": "res://assets/ui/stats/stat_critical.png"
 	}
-	var bar_under := load("res://assets/ui/stats/stat_bar_background.png") as Texture2D
+	var bar_under := load("res://assets/ui/stats/stat_bar_bg.png") as Texture2D
 	var bar_progress := load("res://assets/ui/stats/stat_bar_fill.png") as Texture2D
 	var bar_over := load("res://assets/ui/stats/stat_bar_frame.png") as Texture2D
 	for i in range(stat_names.size()):
@@ -709,15 +709,12 @@ func _build_character_selection_panel(parent: Node) -> void:
 		bar.texture_progress = bar_progress
 		bar.texture_over = bar_over
 		bar.nine_patch_stretch = true
-		bar.stretch_margin_left = 8
-		bar.stretch_margin_top = 7
-		bar.stretch_margin_right = 8
-		bar.stretch_margin_bottom = 7
-		# The PNG layers carry the metal and worn texture; these tints only
-		# grade them for the UI palette instead of replacing them with a flat fill.
-		bar.tint_under = Color("182b33")
-		bar.tint_progress = Color("42d9c1")
-		bar.tint_over = Color("b4fff0")
+		# The PNGs contain the complete material, lighting and wear. Keep the
+		# texture colors untouched: no flat tint or modulate is applied.
+		bar.stretch_margin_left = 20
+		bar.stretch_margin_top = 8
+		bar.stretch_margin_right = 20
+		bar.stretch_margin_bottom = 8
 		bar.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 		bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		selection_stats_panel.add_child(bar)
