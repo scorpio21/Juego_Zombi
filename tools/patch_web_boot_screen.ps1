@@ -47,6 +47,9 @@ body {
 
 foreach ($html in $htmlFiles) {
     $htmlText = Get-Content -LiteralPath $html.FullName -Raw
+    if ($htmlText -match 'id="boot-loader"') {
+        continue
+    }
     if ($htmlText -notmatch 'id="status-brand"') {
         $htmlText = $htmlText.Replace('<progress id="status-progress"></progress>', '<div id="status-brand">NOCHE DE LOS INFECTADOS</div><progress id="status-progress"></progress>')
     }

@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>$GODOT_PROJECT_NAME</title>
+    $GODOT_HEAD_INCLUDE
+    <style>
+        :root { color-scheme: dark; }
+        html, body, #canvas { width: 100%; height: 100%; margin: 0; padding: 0; border: 0; }
+        body { overflow: hidden; background: #02070b url('loading-backdrop.png') center/cover no-repeat; touch-action: none; }
+        #canvas { display: block; outline: none; }
+        #boot-loader {
+            position: fixed; inset: 0; z-index: 10; display: grid; place-items: center;
+            background: linear-gradient(180deg, rgba(1,8,14,.74), rgba(1,5,9,.91)), url('loading-backdrop.png') center/cover no-repeat;
+            opacity: 1; transition: opacity .65s ease; pointer-events: none;
+        }
+        #boot-loader.is-hidden { opacity: 0; }
+        #boot-content { width: min(720px, 76vw); text-align: center; }
+        #boot-logo { color: #dff8ff; font: 700 clamp(1.45rem, 4vw, 3.7rem)/1.1 Arial,sans-serif; letter-spacing: .07em; text-shadow: 0 0 18px #30d2ff, 0 3px 12px #000; }
+        #boot-caption { margin-top: 2.4rem; color: #c7d8d9; font: 500 clamp(.8rem, 1.5vw, 1.1rem) Arial,sans-serif; }
+        #boot-progress { width: 100%; height: .65rem; margin-top: 1.4rem; appearance: none; background: rgba(8,25,31,.9); border: 1px solid #438996; border-radius: 99px; box-shadow: 0 0 18px rgba(34,199,255,.3); overflow: hidden; }
+        #boot-progress::-webkit-progress-bar { background: rgba(8,25,31,.9); }
+        #boot-progress::-webkit-progress-value { background: linear-gradient(90deg,#0879c9,#37e1ff); box-shadow: 0 0 12px #22c7ff; }
+        #boot-progress::-moz-progress-bar { background: linear-gradient(90deg,#0879c9,#37e1ff); box-shadow: 0 0 12px #22c7ff; }
+        #boot-percent { display: block; margin-top: .7rem; color: #8de8d0; font: 600 .9rem Arial,sans-serif; }
+        #boot-notice { margin-top: 1rem; color: #ff9a9a; font: 500 .9rem Arial,sans-serif; white-space: pre-line; }
+    </style>
+</head>
+<body>
+    <canvas id="canvas" tabindex="0">Tu navegador no admite Canvas.</canvas>
+    <div id="boot-loader" aria-label="Cargando Noche de los Infectados">
+        <div id="boot-content">
+            <div id="boot-logo">NOCHE DE LOS INFECTADOS</div>
+            <div id="boot-caption">Preparando la noche...</div>
+            <progress id="boot-progress" value="0" max="1"></progress>
+            <span id="boot-percent">000%</span>
+            <div id="boot-notice"></div>
+        </div>
+    </div>
+    <audio id="boot-music" preload="auto" loop src="audio/menu/Cargando.ogg"></audio>
+    <script src="$GODOT_URL"></script>
+    <script>
+        const GODOT_CONFIG = $GODOT_CONFIG;
+        const engine = new Engine(GODOT_CONFIG);
+        const loader = document.getElementById('boot-loader');
+        const progress = document.getElementById('boot-progress');
+        const percent = document.getElementById('boot-percent');
+        const notice = document.getElementById('boot-notice');
+        const music = document.getElementById('boot-music');
+        let audioUnlocked = false;
+
+        function tryStartMusic() {
+            if (audioUnlocked) return;
+            audioUnlocked = true;
+            music.volume = 0.42;
+            const promise = music.play();
+            if (promise && promise.catch) promise.catch(() => { audioUnlocked = false; });
+        }
+        ['pointerdown', 'touchstart', 'keydown', 'click'].forEach((eventName) => {
+            document.addEventListener(eventName, tryStartMusic, {capture: true, passive: true});
+        });
+        tryStartMusic();
+
+        function showFailure(error) {
+            console.error(error);
+            notice.textContent = error instanceof Error ? error.message : String(error);
+        }
+        function onProgress(current, total) {
+            if (current > 0 && total > 0) {
+                const value = Math.max(0, Math.min(1, current / total));
+                progress.value = value;
+                percent.textContent = String(Math.round(value * 100)).padStart(3, '0') + '%';
+                document.getElementById('boot-caption').textContent = 'CARGANDO RECURSOS...';
+            }
+        }
+        engine.startGame({onProgress}).then(() => {
+            progress.value = 1;
+            percent.textContent = '100%';
+            document.getElementById('boot-caption').textContent = 'SOBREVIVE A LA NOCHE';
+            setTimeout(() => {
+                loader.classList.add('is-hidden');
+                setTimeout(() => loader.remove(), 700);
+            }, 180);
+        }, showFailure);
+    </script>
+</body>
+</html>
