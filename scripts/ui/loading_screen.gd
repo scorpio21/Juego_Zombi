@@ -230,10 +230,10 @@ func _finish_loading() -> void:
 
 func _change_to_main_scene() -> void:
 	var audio := get_node_or_null("/root/AudioManager")
+	if audio != null and audio.has_method("fade_out_loading_music"):
+		await audio.fade_out_loading_music(0.45)
 	if audio != null and audio.has_method("stop_loading_ambience"):
 		audio.stop_loading_ambience()
-	if audio != null and audio.has_method("stop_loading_music"):
-		audio.stop_loading_music()
 	if loaded_scene != null:
 		get_tree().change_scene_to_packed(loaded_scene)
 

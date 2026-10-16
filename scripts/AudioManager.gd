@@ -15,7 +15,10 @@ const UPGRADE_BUS := "Upgrades"
 const UI_BUS := "UI"
 const AMBIENT_BUS := "Ambient"
 const MUSIC_BUS := "Music"
+const SFX_BUS := "SFX"
 const WORLD_BUS := "World"
+const LOADING_MUSIC_PATH := "res://audio/menu/Cargando.ogg"
+const MENU_MUSIC_PATH := "res://audio/menu/Menu_principal.ogg"
 const SOUND_DURATION := 0.42
 var _players: Array[AudioStreamPlayer] = []
 var _player_cursor := 0
@@ -28,8 +31,11 @@ var _ambient_time := 0.0
 var _music_player: AudioStreamPlayer
 var _music_playback: AudioStreamGeneratorPlayback
 var _music_time := 0.0
+var _loading_music_player: AudioStreamPlayer
+var _menu_music_player: AudioStreamPlayer
 
 func _ready() -> void:
+	_ensure_bus(SFX_BUS, -1.0)
 	_ensure_upgrade_bus()
 	_ensure_bus(UI_BUS, -2.0)
 	_ensure_bus(AMBIENT_BUS, -12.0)
@@ -83,7 +89,7 @@ func _ensure_upgrade_bus() -> void:
 		AudioServer.add_bus()
 		bus_index = AudioServer.bus_count - 1
 		AudioServer.set_bus_name(bus_index, UPGRADE_BUS)
-	AudioServer.set_bus_send(bus_index, "Master")
+	AudioServer.set_bus_send(bus_index, SFX_BUS)
 	AudioServer.set_bus_volume_db(bus_index, upgrades_volume_db)
 
 func _build_player_pool() -> void:
@@ -142,13 +148,29 @@ func stop_loading_ambience() -> void:
 	_ambient_playback = null
 
 func start_loading_music() -> void:
+	if is_instance_valid(_loading_music_player) and _loading_music_player.playing:
+		return
+	var stream := _load_cached_stream(LOADING_MUSIC_PATH)
+	if stream != null:
+		if not is_instance_valid(_loading_music_player):
+			_loading_music_player = AudioStreamPlayer.new()
+			_loading_music_player.name = "LoadingMusic"
+			_loading_music_player.bus = MUSIC_BUS
+			add_child(_loading_music_player)
+		_loading_music_player.stream = stream
+		_loading_music_player.volume_db = -42.0
+		_loading_music_player.play()
+		var fade_in := create_tween()
+		fade_in.tween_property(_loading_music_player, "volume_db", -8.0, 1.15)
+		return
+	# Fallback procedural si el OGG no está disponible o no pudo importarse.
 	if is_instance_valid(_music_player) and _music_player.playing:
 		return
 	if not is_instance_valid(_music_player):
 		_music_player = AudioStreamPlayer.new()
-		_music_player.name = "LoadingCinematicMusic"
+		_music_player.name = "LoadingProceduralMusic"
 		_music_player.bus = MUSIC_BUS
-		_music_player.volume_db = 0.0
+		_music_player.volume_db = -8.0
 		add_child(_music_player)
 	var generator := AudioStreamGenerator.new()
 	generator.mix_rate = generator_mix_rate
@@ -159,9 +181,50 @@ func start_loading_music() -> void:
 	_music_playback = _music_player.get_stream_playback() as AudioStreamGeneratorPlayback
 
 func stop_loading_music() -> void:
+	if is_instance_valid(_loading_music_player):
+		_loading_music_player.stop()
 	if is_instance_valid(_music_player):
 		_music_player.stop()
 	_music_playback = null
+
+func fade_out_loading_music(duration: float = 0.45) -> void:
+	var tween := create_tween()
+	var active_player: AudioStreamPlayer = _loading_music_player if is_instance_valid(_loading_music_player) and _loading_music_player.playing else _music_player
+	if is_instance_valid(active_player) and active_player.playing:
+		tween.tween_property(active_player, "volume_db", -60.0, duration)
+		await tween.finished
+		active_player.stop()
+		active_player.volume_db = -8.0
+	_music_playback = null
+
+func start_menu_music() -> void:
+	var stream := _load_cached_stream(MENU_MUSIC_PATH)
+	if stream == null:
+		return
+	var ogg := stream as AudioStreamOggVorbis
+	if ogg != null:
+		ogg.loop = true
+	if not is_instance_valid(_menu_music_player):
+		_menu_music_player = AudioStreamPlayer.new()
+		_menu_music_player.name = "MenuMusic"
+		_menu_music_player.bus = MUSIC_BUS
+		add_child(_menu_music_player)
+	if _menu_music_player.stream != stream:
+		_menu_music_player.stream = stream
+	if not _menu_music_player.playing:
+		_menu_music_player.volume_db = -42.0
+		_menu_music_player.play()
+	var fade_in := create_tween()
+	fade_in.tween_property(_menu_music_player, "volume_db", -10.0, 1.0)
+
+func fade_out_menu_music(duration: float = 0.35) -> void:
+	if not is_instance_valid(_menu_music_player) or not _menu_music_player.playing:
+		return
+	var tween := create_tween()
+	tween.tween_property(_menu_music_player, "volume_db", -60.0, duration)
+	await tween.finished
+	_menu_music_player.stop()
+	_menu_music_player.volume_db = -10.0
 
 func play_ui_event(event_name: String) -> void:
 	_play_preset(_ui_preset(event_name), UI_BUS)

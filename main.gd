@@ -220,6 +220,8 @@ func _ready() -> void:
 	player_sprite.z_index = 5
 	add_child(player_sprite)
 	queue_redraw()
+	if is_instance_valid(audio_manager):
+		audio_manager.call("start_menu_music")
 
 func _process(delta: float) -> void:
 	game_time += delta
@@ -1871,6 +1873,7 @@ func _start_game() -> void:
 func _start_game_after_transition() -> void:
 	if is_instance_valid(audio_manager):
 		audio_manager.call("stop_loading_ambience")
+		audio_manager.call("fade_out_menu_music", 0.35)
 		audio_manager.call("play_game_event", "start_game")
 	if selected_character < 0 or selected_character >= character_data_list.size():
 		selection_message.text = "Selecciona un personaje"
@@ -2796,6 +2799,8 @@ func _return_to_menu_after_transition(message: String) -> void:
 	if game_over_label != null:
 		game_over_label.visible = false
 	get_node("MenuLayer").visible = true
+	if is_instance_valid(audio_manager):
+		audio_manager.call("start_menu_music")
 	menu_message.text = message
 	_refresh_leaderboard()
 
