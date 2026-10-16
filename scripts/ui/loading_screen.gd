@@ -9,7 +9,11 @@ const TIPS := [
 	"Mantén la distancia: los infectados rodean al objetivo.",
 	"Las oleadas llegan por la carretera del horizonte.",
 	"Busca mejoras que complementen tu estilo de supervivencia.",
-	"La noche vuelve más peligrosos a los infectados."
+	"La noche vuelve más peligrosos a los infectados.",
+	"El ruido atrae a los infectados.",
+	"No desperdicies munición.",
+	"Explora antes de que anochezca.",
+	"Las herramientas son tan importantes como las armas."
 ]
 
 var elapsed := 0.0
@@ -21,8 +25,11 @@ var scene_change_started := false
 var tip_index := 0
 var tip_timer := 0.0
 var fog_material: ShaderMaterial
+var bar_shine_material: ShaderMaterial
 var intro_black: ColorRect
 var outro_flash: ColorRect
+var logo_label: Label
+var dust_particles: GPUParticles2D
 var progress_bar: TextureProgressBar
 var progress_label: Label
 var tip_label: Label
@@ -35,6 +42,8 @@ func _ready() -> void:
 	var audio := get_node_or_null("/root/AudioManager")
 	if audio != null and audio.has_method("start_loading_ambience"):
 		audio.start_loading_ambience()
+	if audio != null and audio.has_method("start_loading_music"):
+		audio.start_loading_music()
 	# Se precarga en segundo plano el atlas pesado del escenario. La escena
 	# principal se instancia al terminar la duración mínima, ya con la pantalla
 	# cubriéndola para evitar cualquier parpadeo.
@@ -56,18 +65,30 @@ func _process(delta: float) -> void:
 		tip_tween.tween_property(tip_label, "modulate:a", 1.0, 0.20)
 	if fog_material != null:
 		fog_material.set_shader_parameter("time", elapsed)
+	if bar_shine_material != null:
+		bar_shine_material.set_shader_parameter("time", elapsed)
+	if logo_label != null:
+		var pulse := 0.94 + 0.06 * sin(elapsed * 1.8)
+		logo_label.modulate = Color(0.92 + pulse * 0.08, 0.97 + pulse * 0.03, 1.0, 1.0)
+	# La carga real puede terminar en milisegundos. La progresión visible se
+	# distribuye por toda la duración cinematográfica para que nunca aparezca
+	# clavada en 000%.
+	var timeline_progress := clampf(elapsed / MINIMUM_DURATION, 0.0, 1.0)
+	var actual_progress := 0.0
 	if load_status == ResourceLoader.THREAD_LOAD_IN_PROGRESS:
-		load_status = ResourceLoader.load_threaded_get_status(MAIN_SCENE_PATH, load_progress)
-		var actual_progress := clampf(float(load_progress[0]) * 100.0, 0.0, 100.0)
-		progress_bar.value = maxf(progress_bar.value, actual_progress)
-		progress_label.text = "%03d%%" % int(progress_bar.value)
+		load_status = ResourceLoader.load_threaded_get_status(WARMUP_RESOURCE_PATH, load_progress)
+		actual_progress = clampf(float(load_progress[0]) * 100.0, 0.0, 100.0)
 		status_label.text = "CARGANDO RECURSOS..."
 		if load_status == ResourceLoader.THREAD_LOAD_LOADED:
 			warmup_resource = ResourceLoader.load_threaded_get(WARMUP_RESOURCE_PATH)
 	elif load_status == ResourceLoader.THREAD_LOAD_FAILED:
 		status_label.text = "PREPARANDO LA NOCHE..."
-		progress_bar.value = maxf(progress_bar.value, 72.0)
-		progress_label.text = "%03d%%" % int(progress_bar.value)
+	var visible_progress := timeline_progress * 100.0
+	visible_progress = maxf(visible_progress, actual_progress)
+	if elapsed < MINIMUM_DURATION:
+		visible_progress = minf(99.0, visible_progress)
+	progress_bar.value = visible_progress
+	progress_label.text = "%03d%%" % int(visible_progress)
 	if loaded_scene == null and not scene_change_started and elapsed >= MINIMUM_DURATION:
 		loaded_scene = load(MAIN_SCENE_PATH) as PackedScene
 	if loaded_scene != null and not scene_change_started and elapsed >= MINIMUM_DURATION:
@@ -105,11 +126,11 @@ func _build_screen() -> void:
 	shade.color = Color(0.0, 0.0, 0.0, 0.22)
 	shade.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(shade)
-	var title := _make_label("NOCHE DE LOS INFECTADOS", Vector2(150, 190), Vector2(980, 64), 42, Color("e7f7fb"))
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.add_theme_constant_override("outline_size", 5)
-	title.add_theme_color_override("font_outline_color", Color(0.08, 0.48, 0.72, 0.95))
-	add_child(title)
+	logo_label = _make_label("NOCHE DE LOS INFECTADOS", Vector2(150, 190), Vector2(980, 64), 42, Color("e7f7fb"))
+	logo_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	logo_label.add_theme_constant_override("outline_size", 5)
+	logo_label.add_theme_color_override("font_outline_color", Color(0.08, 0.48, 0.72, 0.95))
+	add_child(logo_label)
 	tip_label = _make_label(TIPS[0], Vector2(190, 372), Vector2(900, 34), 16, Color("d0dddd"))
 	tip_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	add_child(tip_label)
@@ -130,6 +151,38 @@ func _build_screen() -> void:
 	progress_bar.stretch_margin_bottom = 8
 	progress_bar.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 	add_child(progress_bar)
+	var bar_shine := ColorRect.new()
+	bar_shine.name = "MovingBarShine"
+	bar_shine.position = Vector2(390, 460)
+	bar_shine.size = Vector2(500, 28)
+	bar_shine.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	bar_shine_material = ShaderMaterial.new()
+	var shine_shader := Shader.new()
+	shine_shader.code = "shader_type canvas_item;\nuniform float time = 0.0;\nvoid fragment(){float band=1.0-smoothstep(0.0,0.18,abs(fract(UV.x-time*0.16)-0.5)*2.0);COLOR=vec4(0.72,0.96,1.0,band*0.12);;}"
+	bar_shine_material.shader = shine_shader
+	bar_shine.material = bar_shine_material
+	add_child(bar_shine)
+	var particle_material := ParticleProcessMaterial.new()
+	particle_material.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_BOX
+	particle_material.emission_box_extents = Vector3(640.0, 340.0, 0.0)
+	particle_material.direction = Vector3(-0.12, -0.02, 0.0)
+	particle_material.initial_velocity_min = 3.0
+	particle_material.initial_velocity_max = 12.0
+	particle_material.gravity = Vector3.ZERO
+	particle_material.scale_min = 0.25
+	particle_material.scale_max = 0.8
+	dust_particles = GPUParticles2D.new()
+	dust_particles.name = "FloatingDust"
+	dust_particles.position = Vector2(640, 360)
+	dust_particles.amount = 34
+	dust_particles.lifetime = 5.0
+	dust_particles.preprocess = 3.0
+	dust_particles.process_material = particle_material
+	var dust_image := Image.create(3, 3, false, Image.FORMAT_RGBA8)
+	dust_image.fill(Color(0.72, 0.88, 0.88, 0.22))
+	dust_particles.texture = ImageTexture.create_from_image(dust_image)
+	dust_particles.z_index = 2
+	add_child(dust_particles)
 	progress_label = _make_label("000%", Vector2(920, 458), Vector2(80, 30), 14, Color("9bd8db"))
 	add_child(progress_label)
 	status_label = _make_label("PREPARANDO LA NOCHE...", Vector2(300, 505), Vector2(680, 28), 13, Color("9bd8db"))
@@ -179,6 +232,8 @@ func _change_to_main_scene() -> void:
 	var audio := get_node_or_null("/root/AudioManager")
 	if audio != null and audio.has_method("stop_loading_ambience"):
 		audio.stop_loading_ambience()
+	if audio != null and audio.has_method("stop_loading_music"):
+		audio.stop_loading_music()
 	if loaded_scene != null:
 		get_tree().change_scene_to_packed(loaded_scene)
 
@@ -186,3 +241,5 @@ func _exit_tree() -> void:
 	var audio := get_node_or_null("/root/AudioManager")
 	if audio != null and audio.has_method("stop_loading_ambience"):
 		audio.stop_loading_ambience()
+	if audio != null and audio.has_method("stop_loading_music"):
+		audio.stop_loading_music()

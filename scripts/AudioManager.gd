@@ -14,6 +14,7 @@ extends Node
 const UPGRADE_BUS := "Upgrades"
 const UI_BUS := "UI"
 const AMBIENT_BUS := "Ambient"
+const MUSIC_BUS := "Music"
 const WORLD_BUS := "World"
 const SOUND_DURATION := 0.42
 var _players: Array[AudioStreamPlayer] = []
@@ -24,30 +25,48 @@ var _audio_warnings: Dictionary = {}
 var _ambient_player: AudioStreamPlayer
 var _ambient_playback: AudioStreamGeneratorPlayback
 var _ambient_time := 0.0
+var _music_player: AudioStreamPlayer
+var _music_playback: AudioStreamGeneratorPlayback
+var _music_time := 0.0
 
 func _ready() -> void:
 	_ensure_upgrade_bus()
 	_ensure_bus(UI_BUS, -2.0)
 	_ensure_bus(AMBIENT_BUS, -12.0)
+	_ensure_bus(MUSIC_BUS, -14.0)
 	_ensure_bus(WORLD_BUS, -1.0)
 	_build_player_pool()
 	set_process(true)
 
 func _process(delta: float) -> void:
-	if _ambient_playback == null:
-		return
-	_ambient_time += delta
-	var frames_available := mini(_ambient_playback.get_frames_available(), 1024)
-	for frame in range(frames_available):
-		var t := _ambient_time + float(frame) / float(generator_mix_rate)
-		var wind := sin(TAU * 42.0 * t) * 0.022 + sin(TAU * 57.0 * t) * 0.012
-		var cricket_gate := maxf(0.0, sin(t * 1.7))
-		var crickets := sin(TAU * 2350.0 * t) * 0.006 * cricket_gate
-		var crow_phase := fmod(t, 7.0)
-		var crow := sin(TAU * (270.0 - crow_phase * 30.0) * t) * maxf(0.0, 1.0 - crow_phase * 2.8) * 0.012
-		var noise := randf_range(-0.006, 0.006)
-		var sample := clampf(wind + crickets + crow + noise, -0.08, 0.08)
-		_ambient_playback.push_frame(Vector2(sample, sample))
+	if _ambient_playback != null:
+		_ambient_time += delta
+		var ambient_frames := mini(_ambient_playback.get_frames_available(), 1024)
+		for frame in range(ambient_frames):
+			var ambient_t := _ambient_time + float(frame) / float(generator_mix_rate)
+			var wind := sin(TAU * 42.0 * ambient_t) * 0.022 + sin(TAU * 57.0 * ambient_t) * 0.012
+			var cricket_gate := maxf(0.0, sin(ambient_t * 1.7))
+			var crickets := sin(TAU * 2350.0 * ambient_t) * 0.006 * cricket_gate
+			var crow_phase := fmod(ambient_t, 7.0)
+			var crow := sin(TAU * (270.0 - crow_phase * 30.0) * ambient_t) * maxf(0.0, 1.0 - crow_phase * 2.8) * 0.012
+			var noise := randf_range(-0.006, 0.006)
+			var ambient_sample := clampf(wind + crickets + crow + noise, -0.08, 0.08)
+			_ambient_playback.push_frame(Vector2(ambient_sample, ambient_sample))
+	if _music_playback != null:
+		_music_time = fmod(_music_time + delta, 90.0)
+		var music_frames := mini(_music_playback.get_frames_available(), 1024)
+		for frame in range(music_frames):
+			var music_t := fmod(_music_time + float(frame) / float(generator_mix_rate), 90.0)
+			var drone := sin(TAU * 55.0 * music_t) * 0.025 + sin(TAU * 82.5 * music_t) * 0.012
+			var pad := sin(TAU * 110.0 * music_t + sin(music_t * 0.18) * 0.7) * 0.014
+			var note_clock := fmod(music_t, 12.0)
+			var note_index := floori(note_clock / 3.0)
+			var note_frequencies := [196.0, 233.0, 174.0, 261.0]
+			var note_t := fmod(note_clock, 3.0)
+			var note_env := sin(PI * note_t / 3.0) * 0.018
+			var piano := sin(TAU * float(note_frequencies[note_index]) * music_t) * note_env
+			var music_sample := clampf(drone + pad + piano, -0.09, 0.09)
+			_music_playback.push_frame(Vector2(music_sample, music_sample))
 
 func _ensure_bus(bus_name: String, volume_db: float) -> void:
 	var bus_index := AudioServer.get_bus_index(bus_name)
@@ -121,6 +140,28 @@ func stop_loading_ambience() -> void:
 	if is_instance_valid(_ambient_player):
 		_ambient_player.stop()
 	_ambient_playback = null
+
+func start_loading_music() -> void:
+	if is_instance_valid(_music_player) and _music_player.playing:
+		return
+	if not is_instance_valid(_music_player):
+		_music_player = AudioStreamPlayer.new()
+		_music_player.name = "LoadingCinematicMusic"
+		_music_player.bus = MUSIC_BUS
+		_music_player.volume_db = 0.0
+		add_child(_music_player)
+	var generator := AudioStreamGenerator.new()
+	generator.mix_rate = generator_mix_rate
+	generator.buffer_length = 0.35
+	_music_player.stream = generator
+	_music_time = 0.0
+	_music_player.play()
+	_music_playback = _music_player.get_stream_playback() as AudioStreamGeneratorPlayback
+
+func stop_loading_music() -> void:
+	if is_instance_valid(_music_player):
+		_music_player.stop()
+	_music_playback = null
 
 func play_ui_event(event_name: String) -> void:
 	_play_preset(_ui_preset(event_name), UI_BUS)
