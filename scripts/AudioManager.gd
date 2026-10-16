@@ -19,6 +19,7 @@ const SFX_BUS := "SFX"
 const WORLD_BUS := "World"
 const LOADING_MUSIC_PATH := "res://audio/menu/Cargando.ogg"
 const MENU_MUSIC_PATH := "res://audio/menu/Menu_principal.ogg"
+const WEB_AUDIO_BASE_URL := "https://raw.githubusercontent.com/scorpio21/zombie-web/main/"
 # Las voces se precargan de forma explícita. Esto evita que el export Web
 # descarte los OGG o que ResourceLoader.exists() falle al buscar recursos
 # importados durante el arranque del navegador.
@@ -345,7 +346,7 @@ func _play_web_audio(key: String, relative_path: String, loop: bool, volume: flo
 	if not OS.has_feature("web"):
 		return
 	var key_json := JSON.stringify(key)
-	var path_json := JSON.stringify(relative_path)
+	var path_json := JSON.stringify(WEB_AUDIO_BASE_URL + relative_path)
 	var loop_js := "true" if loop else "false"
 	var js := """
 (function(){
