@@ -13,6 +13,7 @@ const STORM_EFFECT_SCRIPT := preload("res://scripts/ui/storm_effect.gd")
 const DESTRUCTIBLE_OBJECT_SCRIPT := preload("res://scripts/world/destructible_object.gd")
 const WORLD_ATMOSPHERE_SCRIPT := preload("res://scripts/world/world_atmosphere.gd")
 const VIRTUAL_JOYSTICK_SCRIPT := preload("res://scripts/ui/virtual_joystick.gd")
+const LOADING_ATMOSPHERE_SCRIPT := preload("res://scripts/ui/loading_atmosphere.gd")
 
 var mode := "menu"
 var player_pos := Vector2(640, 390)
@@ -151,10 +152,32 @@ var touch_shoot_button: Button
 var touch_reload_button: Button
 var touch_move := Vector2.ZERO
 var touch_shoot_pressed := false
+var loading_layer: CanvasLayer
+var loading_root: Control
+var loading_black: ColorRect
+var loading_logo: Label
+var loading_tip: Label
+var loading_progress: TextureProgressBar
+var loading_status: Label
+var loading_flash: ColorRect
+var loading_tip_index := 0
+var loading_tip_timer := 0.0
+var boot_loading_finished := false
+var scene_transition_layer: CanvasLayer
+var scene_transition_fade: ColorRect
+var scene_transition_label: Label
+var scene_transition_busy := false
+const LOADING_TIPS := [
+	"Mantén la distancia: los infectados rodean al objetivo.",
+	"Las oleadas llegan por la carretera del horizonte.",
+	"Busca mejoras que complementen tu estilo de supervivencia.",
+	"La niebla reduce la visibilidad, pero no detiene a los infectados."
+]
 
 func _ready() -> void:
 	# Keep atlas frames pixel-perfect: linear filtering leaks neighboring cells.
 	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	_build_loading_overlay()
 	audio_manager = get_node_or_null("/root/AudioManager")
 	climate_controller = get_node_or_null("ClimateManager") as ClimateManager
 	if climate_controller != null:
@@ -175,6 +198,7 @@ func _ready() -> void:
 	records = _load_records()
 	queue_redraw()
 	_build_menu()
+	get_node("MenuLayer").visible = false
 	_build_hud()
 	_build_touch_controls()
 	_build_props()
@@ -196,9 +220,15 @@ func _ready() -> void:
 	player_sprite.z_index = 5
 	add_child(player_sprite)
 	queue_redraw()
+	call_deferred("_play_boot_loading")
 
 func _process(delta: float) -> void:
 	game_time += delta
+	if loading_layer != null and loading_layer.visible and not boot_loading_finished:
+		loading_tip_timer += delta
+		if loading_tip_timer >= 0.72:
+			loading_tip_timer = 0.0
+			_loading_cycle_tip()
 	flash_timer = maxf(0.0, flash_timer - delta)
 	camera_shake_timer = maxf(0.0, camera_shake_timer - delta)
 	damage_cooldown = maxf(0.0, damage_cooldown - delta)
@@ -374,6 +404,171 @@ func _night_bonus_for_enemy(data: Resource) -> float:
 	if str(data.rarity).to_lower().contains("épico") or enemy_id == "mutant" or enemy_id == "armored":
 		return base_bonus * 4.0
 	return base_bonus
+
+func _build_loading_overlay() -> void:
+	loading_layer = CanvasLayer.new()
+	loading_layer.name = "CinematicLoadingLayer"
+	loading_layer.layer = 100
+	add_child(loading_layer)
+	loading_root = Control.new()
+	loading_root.name = "LoadingRoot"
+	loading_root.size = WORLD_SIZE
+	loading_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	loading_layer.add_child(loading_root)
+	loading_black = ColorRect.new()
+	loading_black.name = "BlackScreen"
+	loading_black.size = WORLD_SIZE
+	loading_black.color = Color(0.0, 0.008, 0.012, 1.0)
+	loading_black.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	loading_root.add_child(loading_black)
+	var fog := LOADING_ATMOSPHERE_SCRIPT.new()
+	fog.name = "MovingFog"
+	fog.size = WORLD_SIZE
+	fog.z_index = 1
+	loading_root.add_child(fog)
+	loading_logo = _label(loading_root, "NOCHE DE LOS INFECTADOS", Vector2(160, 206), 42, Color("e6f7fb"))
+	loading_logo.size = Vector2(960, 64)
+	loading_logo.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	loading_logo.add_theme_constant_override("outline_size", 5)
+	loading_logo.add_theme_color_override("font_outline_color", Color(0.12, 0.55, 0.78, 0.92))
+	loading_logo.add_theme_constant_override("shadow_offset_x", 4)
+	loading_logo.add_theme_constant_override("shadow_offset_y", 7)
+	loading_logo.add_theme_color_override("font_shadow_color", Color(0.0, 0.02, 0.04, 0.95))
+	loading_logo.modulate = Color(1.0, 1.0, 1.0, 0.0)
+	loading_logo.z_index = 2
+	loading_tip = _label(loading_root, LOADING_TIPS[0], Vector2(190, 390), 16, Color("b7c9cd"))
+	loading_tip.size = Vector2(900, 34)
+	loading_tip.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	loading_tip.modulate = Color(1.0, 1.0, 1.0, 0.0)
+	loading_tip.z_index = 2
+	loading_progress = TextureProgressBar.new()
+	loading_progress.name = "LoadingProgress"
+	loading_progress.position = Vector2(390, 472)
+	loading_progress.size = Vector2(500, 28)
+	loading_progress.max_value = 100.0
+	loading_progress.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	loading_progress.texture_under = load("res://assets/ui/stats/stat_bar_bg.png") as Texture2D
+	loading_progress.texture_progress = load("res://assets/ui/stats/defense_fill.png") as Texture2D
+	loading_progress.texture_over = load("res://assets/ui/stats/stat_bar_frame.png") as Texture2D
+	loading_progress.nine_patch_stretch = true
+	loading_progress.stretch_margin_left = 20
+	loading_progress.stretch_margin_top = 8
+	loading_progress.stretch_margin_right = 20
+	loading_progress.stretch_margin_bottom = 8
+	loading_progress.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+	loading_progress.modulate = Color(1.0, 1.0, 1.0, 0.0)
+	loading_progress.z_index = 2
+	loading_root.add_child(loading_progress)
+	loading_status = _label(loading_root, "PREPARANDO LA NOCHE...", Vector2(300, 515), 13, Color("7bc5cf"))
+	loading_status.size = Vector2(680, 26)
+	loading_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	loading_status.modulate = Color(1.0, 1.0, 1.0, 0.0)
+	loading_status.z_index = 2
+	loading_flash = ColorRect.new()
+	loading_flash.name = "LoadingFlash"
+	loading_flash.size = WORLD_SIZE
+	loading_flash.color = Color(0.55, 0.88, 1.0, 0.0)
+	loading_flash.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	loading_flash.z_index = 10
+	loading_root.add_child(loading_flash)
+	_build_scene_transition_overlay()
+	loading_layer.visible = true
+
+func _build_scene_transition_overlay() -> void:
+	scene_transition_layer = CanvasLayer.new()
+	scene_transition_layer.name = "SceneTransitionLayer"
+	scene_transition_layer.layer = 110
+	add_child(scene_transition_layer)
+	var root := Control.new()
+	root.size = WORLD_SIZE
+	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	scene_transition_layer.add_child(root)
+	scene_transition_fade = ColorRect.new()
+	scene_transition_fade.size = WORLD_SIZE
+	scene_transition_fade.color = Color(0.0, 0.0, 0.0, 0.0)
+	scene_transition_fade.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.add_child(scene_transition_fade)
+	scene_transition_label = _label(root, "", Vector2(260, 338), 18, Color("c8e5e8"))
+	scene_transition_label.size = Vector2(760, 40)
+	scene_transition_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	scene_transition_label.modulate = Color(1.0, 1.0, 1.0, 0.0)
+	scene_transition_label.add_theme_constant_override("outline_size", 3)
+	scene_transition_label.add_theme_color_override("font_outline_color", Color(0.0, 0.08, 0.10, 0.9))
+	scene_transition_layer.visible = false
+
+func _play_boot_loading() -> void:
+	boot_loading_finished = false
+	loading_tip_index = 0
+	loading_tip_timer = 0.0
+	loading_tip.text = LOADING_TIPS[0]
+	loading_progress.value = 0.0
+	loading_root.modulate = Color.WHITE
+	loading_black.color = Color(0.0, 0.008, 0.012, 1.0)
+	loading_logo.modulate = Color(1.0, 1.0, 1.0, 0.0)
+	loading_tip.modulate = Color(1.0, 1.0, 1.0, 0.0)
+	loading_progress.modulate = Color(1.0, 1.0, 1.0, 0.0)
+	loading_status.modulate = Color(1.0, 1.0, 1.0, 0.0)
+	loading_layer.visible = true
+	var reveal := create_tween().set_parallel()
+	reveal.tween_property(loading_logo, "modulate", Color.WHITE, 0.72).set_delay(0.12)
+	reveal.tween_property(loading_tip, "modulate", Color.WHITE, 0.55).set_delay(0.50)
+	reveal.tween_property(loading_progress, "modulate", Color.WHITE, 0.48).set_delay(0.72)
+	reveal.tween_property(loading_status, "modulate", Color.WHITE, 0.48).set_delay(0.82)
+	var progress_tween := create_tween()
+	progress_tween.tween_interval(0.32)
+	progress_tween.tween_property(loading_progress, "value", 100.0, 1.42)
+	progress_tween.tween_interval(0.18)
+	progress_tween.tween_callback(_finish_boot_loading)
+
+func _loading_cycle_tip() -> void:
+	loading_tip_index = (loading_tip_index + 1) % LOADING_TIPS.size()
+	var tween := create_tween()
+	tween.tween_property(loading_tip, "modulate:a", 0.25, 0.12)
+	tween.tween_callback(func() -> void: loading_tip.text = LOADING_TIPS[loading_tip_index])
+	tween.tween_property(loading_tip, "modulate:a", 1.0, 0.18)
+
+func _finish_boot_loading() -> void:
+	if boot_loading_finished:
+		return
+	loading_status.text = "CARGA COMPLETADA"
+	var tween := create_tween()
+	tween.tween_property(loading_flash, "color", Color(0.62, 0.9, 1.0, 0.24), 0.08)
+	tween.tween_property(loading_flash, "color", Color(0.62, 0.9, 1.0, 0.0), 0.26)
+	tween.tween_interval(0.16)
+	tween.tween_callback(_reveal_menu_after_loading)
+
+func _reveal_menu_after_loading() -> void:
+	boot_loading_finished = true
+	var menu_layer := get_node_or_null("MenuLayer") as CanvasLayer
+	if menu_layer != null:
+		menu_layer.visible = true
+	var tween := create_tween()
+	tween.tween_property(loading_root, "modulate", Color(1.0, 1.0, 1.0, 0.0), 0.58)
+	tween.tween_callback(func() -> void:
+		loading_layer.visible = false
+		loading_root.modulate = Color.WHITE
+	)
+
+func _play_scene_transition(callback: Callable, message: String) -> void:
+	if scene_transition_busy or scene_transition_layer == null:
+		return
+	scene_transition_busy = true
+	scene_transition_layer.visible = true
+	scene_transition_fade.color = Color(0.0, 0.0, 0.0, 0.0)
+	scene_transition_label.text = message
+	scene_transition_label.modulate = Color(1.0, 1.0, 1.0, 0.0)
+	var tween := create_tween()
+	tween.tween_property(scene_transition_fade, "color", Color(0.0, 0.0, 0.0, 1.0), 0.36)
+	tween.parallel().tween_property(scene_transition_label, "modulate", Color.WHITE, 0.24)
+	tween.tween_interval(0.10)
+	tween.tween_callback(callback)
+	tween.tween_interval(0.12)
+	tween.tween_property(scene_transition_fade, "color", Color(0.0, 0.0, 0.0, 0.0), 0.46)
+	tween.parallel().tween_property(scene_transition_label, "modulate", Color(1.0, 1.0, 1.0, 0.0), 0.24)
+	tween.tween_callback(func() -> void:
+		scene_transition_busy = false
+		scene_transition_layer.visible = false
+	)
 
 func _build_menu() -> void:
 	var layer := CanvasLayer.new()
@@ -730,7 +925,6 @@ func _build_character_selection_panel(parent: Node) -> void:
 		value_label.size = Vector2(31, 21)
 		value_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 		value_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		selection_stats_panel.add_child(value_label)
 		selection_stat_values[stat_name] = value_label
 	var divider := ColorRect.new()
 	divider.position = Vector2(18, 410)
@@ -1643,6 +1837,20 @@ func _start_game() -> void:
 		menu_message.visible = true
 		return
 	menu_message.visible = false
+	_play_scene_transition(Callable(self, "_start_game_after_transition"), "ENTRANDO EN LA NOCHE...")
+
+func _start_game_after_transition() -> void:
+	if selected_character < 0 or selected_character >= character_data_list.size():
+		selection_message.text = "Selecciona un personaje"
+		selection_message.visible = true
+		return
+	username = name_input.text.strip_edges()
+	if username.is_empty():
+		menu_message.text = "Escribe un nombre para guardar tu record."
+		menu_message.add_theme_color_override("font_color", Color("d96d6f"))
+		menu_message.visible = true
+		return
+	menu_message.visible = false
 	var player_stats := _normalize_record(records.get(username, {}))
 	player_stats["plays"] = int(player_stats["plays"]) + 1
 	records[username] = player_stats
@@ -2512,6 +2720,11 @@ func _write_records() -> void:
 	file.store_string(JSON.stringify(records))
 
 func _return_to_menu(message: String) -> void:
+	if scene_transition_busy:
+		return
+	_play_scene_transition(Callable(self, "_return_to_menu_after_transition").bind(message), "REGRESANDO AL REFUGIO...")
+
+func _return_to_menu_after_transition(message: String) -> void:
 	mode = "menu"
 	touch_move = Vector2.ZERO
 	touch_shoot_pressed = false
