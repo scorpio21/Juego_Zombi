@@ -146,7 +146,7 @@ var camera_shake_strength := 0.0
 var upgrade_lightning_flash: ColorRect
 var touch_layer: CanvasLayer
 var touch_root: Control
-var touch_joystick: VirtualJoystick
+var touch_joystick: TouchJoystick
 var touch_shoot_button: Button
 var touch_reload_button: Button
 var touch_move := Vector2.ZERO
