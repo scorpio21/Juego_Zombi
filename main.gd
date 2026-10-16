@@ -2887,12 +2887,13 @@ func _write_records() -> void:
 
 func _return_to_menu(message: String) -> void:
 	print("[DEBUG][MENU] _return_to_menu llamado | modo=", mode, " | transition_busy=", scene_transition_busy, " | mensaje=", message)
-	if scene_transition_busy:
-		# Una transición interrumpida no debe bloquear el regreso al menú.
-		scene_transition_busy = false
-		if scene_transition_layer != null:
-			scene_transition_layer.visible = false
-	_play_scene_transition(Callable(self, "_return_to_menu_after_transition").bind(message), "REGRESANDO AL REFUGIO...")
+	# El regreso debe ser fiable incluso si un Tween anterior quedó activo o
+	# fue consumido por el editor embebido. La transición de salida es opcional;
+	# nunca debe impedir que el jugador vuelva al menú.
+	scene_transition_busy = false
+	if scene_transition_layer != null:
+		scene_transition_layer.visible = false
+	_return_to_menu_after_transition(message)
 
 func _return_to_menu_after_transition(message: String) -> void:
 	print("[DEBUG][MENU] _return_to_menu_after_transition ejecutado | mensaje=", message)
@@ -2921,6 +2922,7 @@ func _return_to_menu_after_transition(message: String) -> void:
 	if game_over_label != null:
 		game_over_label.visible = false
 	get_node("MenuLayer").visible = true
+	print("[DEBUG][MENU] MenuLayer visible=true | modo=", mode)
 	if is_instance_valid(audio_manager):
 		audio_manager.call("start_menu_music")
 	menu_message.text = message
