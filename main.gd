@@ -5,6 +5,8 @@ const WORLD_SIZE := Vector2(1280, 720)
 const PLAYER_SPEED := 310.0
 const UPGRADE_INTERVAL := 25.0
 const MAX_PARTICLES := 180
+const MAGAZINE_SIZE := 12
+const RELOAD_DURATION := 0.85
 const ENEMY_DATABASE_SCRIPT := preload("res://scripts/enemies/enemy_database.gd")
 const CHARACTER_DATA_SCRIPT := preload("res://scripts/characters/character_data.gd")
 const STORM_EFFECT_SCRIPT := preload("res://scripts/ui/storm_effect.gd")
@@ -56,6 +58,9 @@ var projectile_speed_multiplier := 1.0
 var fire_rate_multiplier := 1.0
 var bullet_size_multiplier := 1.0
 var shoot_cooldown := 0.0
+var ammo_in_magazine := MAGAZINE_SIZE
+var reload_timer := 0.0
+var weapon_reloading := false
 var protection_timer := 0.0
 var phase_timer := 0.0
 var upgrade_levels: Dictionary = {}
@@ -112,6 +117,7 @@ var score_label: Label
 var wave_label: Label
 var record_label: Label
 var lives_label: Label
+var ammo_label: Label
 var life_icons: Array[TextureRect] = []
 var status_label: Label
 var game_over_label: Label
@@ -238,6 +244,14 @@ func _process(delta: float) -> void:
 	protection_timer = maxf(0.0, protection_timer - delta)
 	phase_timer = maxf(0.0, phase_timer - delta)
 	shoot_cooldown = maxf(0.0, shoot_cooldown - delta)
+	if weapon_reloading:
+		reload_timer = maxf(0.0, reload_timer - delta)
+		if reload_timer <= 0.0:
+			weapon_reloading = false
+			ammo_in_magazine = MAGAZINE_SIZE
+			if mode == "playing" and status_label != null:
+				status_label.text = "ARMA LISTA"
+			_update_hud()
 	_update_weather(delta)
 	if touch_root != null:
 		touch_root.visible = mode == "playing" and not upgrade_selecting
@@ -1307,6 +1321,9 @@ func _build_hud() -> void:
 		hud.add_child(heart)
 		life_icons.append(heart)
 	status_label = _label(hud, "", Vector2(820, 38), 16, Color("d96d6f"))
+	ammo_label = _label(hud, "MUNICIÓN  12/12", Vector2(1045, 38), 15, Color("f0bf6d"))
+	ammo_label.size = Vector2(190, 24)
+	ammo_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	game_over_label = _label(hud, "", Vector2(380, 295), 30, Color("f0bf6d"))
 	game_over_label.size = Vector2(520, 120)
 	game_over_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -1350,10 +1367,11 @@ func _build_touch_controls() -> void:
 	touch_reload_button = _create_touch_button("RECARGAR", Color("f0bf6d"))
 	touch_reload_button.name = "ReloadButton"
 	touch_reload_button.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
-	touch_reload_button.offset_left = -164.0
-	touch_reload_button.offset_top = -124.0
-	touch_reload_button.offset_right = -34.0
-	touch_reload_button.offset_bottom = -74.0
+	# El botón de recarga queda encima del disparo y fuera de su área.
+	touch_reload_button.offset_left = -214.0
+	touch_reload_button.offset_top = -280.0
+	touch_reload_button.offset_right = -64.0
+	touch_reload_button.offset_bottom = -225.0
 	touch_reload_button.pressed.connect(_on_touch_reload)
 	touch_root.add_child(touch_reload_button)
 	touch_root.visible = false
@@ -1393,11 +1411,17 @@ func _on_touch_shoot_up() -> void:
 	touch_shoot_pressed = false
 
 func _on_touch_reload() -> void:
-	# There is no finite magazine in the current weapon model. Resetting the
-	# cooldown makes the button useful now and keeps it ready for ammunition.
-	shoot_cooldown = 0.0
-	if status_label != null and mode == "playing":
-		status_label.text = "ARMA LISTA"
+	_reload_weapon()
+
+func _reload_weapon() -> void:
+	if mode != "playing" or weapon_reloading or ammo_in_magazine >= MAGAZINE_SIZE:
+		return
+	weapon_reloading = true
+	reload_timer = RELOAD_DURATION
+	shoot_cooldown = maxf(shoot_cooldown, RELOAD_DURATION)
+	if status_label != null:
+		status_label.text = "RECARGANDO..."
+	_update_hud()
 
 func _build_upgrade_panel() -> void:
 	upgrade_overlay = ColorRect.new()
@@ -1936,6 +1960,9 @@ func _start_game_after_transition() -> void:
 		menu_layer.visible = false
 	touch_move = Vector2.ZERO
 	touch_shoot_pressed = false
+	weapon_reloading = false
+	reload_timer = 0.0
+	ammo_in_magazine = MAGAZINE_SIZE
 	player_moving = false
 	player_facing = Vector2.DOWN
 	player_dead = false
@@ -2015,6 +2042,8 @@ func _update_game(delta: float) -> void:
 	else:
 		var mouse_position := get_global_mouse_position()
 		aim_pos = player_pos + (mouse_position - player_pos) * mouse_sensitivity
+	if Input.is_action_just_pressed("reload"):
+		_reload_weapon()
 	if Input.is_action_just_pressed("shoot") or touch_shoot_pressed:
 		_shoot()
 	_update_bullets(delta)
@@ -2050,6 +2079,12 @@ func _get_touch_aim_position() -> Vector2:
 	return closest_position
 
 func _shoot() -> void:
+	if weapon_reloading:
+		return
+	if ammo_in_magazine <= 0:
+		if status_label != null:
+			status_label.text = "SIN MUNICIÓN · PULSA R"
+		return
 	if shoot_cooldown > 0.0:
 		return
 	var direction := player_pos.direction_to(aim_pos)
@@ -2057,6 +2092,10 @@ func _shoot() -> void:
 		return
 	bullets.append({"pos": player_pos + direction * 24.0, "vel": direction * 820.0 * projectile_speed_multiplier, "life": 0.9, "radius": 8.0 * bullet_size_multiplier})
 	shoot_cooldown = 0.12 / maxf(1.0, fire_rate_multiplier)
+	ammo_in_magazine -= 1
+	if ammo_in_magazine <= 0 and status_label != null:
+		status_label.text = "SIN MUNICIÓN · PULSA R"
+	_update_hud()
 	flash_timer = 0.08
 	if is_instance_valid(audio_manager):
 		audio_manager.call("play_game_event", "shoot")
@@ -2260,6 +2299,9 @@ func _update_hud() -> void:
 	score_label.text = "PUNTOS  %06d" % score
 	wave_label.text = "OLEADA  %02d" % wave
 	record_label.text = "RECORD  %06d" % int(_normalize_record(records.get(username, {}))["score"])
+	if ammo_label != null:
+		ammo_label.text = "MUNICIÓN  %02d/%02d" % [ammo_in_magazine, MAGAZINE_SIZE]
+		ammo_label.modulate = Color("e85b63") if ammo_in_magazine == 0 else Color("f0bf6d")
 	# Iconos SVG para que las vidas se vean igual en escritorio y Web.
 	lives_label.text = "VIDAS"
 	for i in range(life_icons.size()):
@@ -2848,6 +2890,17 @@ func _return_to_menu_after_transition(message: String) -> void:
 
 func _input(event: InputEvent) -> void:
 	if rebinding_action == "":
+		if event is InputEventKey and event.pressed and not event.echo:
+			# _input recibe la tecla antes que los controles de la interfaz;
+			# así Escape y R siguen funcionando aunque un Button tenga el foco.
+			if event.keycode == KEY_ESCAPE and mode in ["playing", "upgrade", "game_over"]:
+				if not username.is_empty():
+					_save_record()
+				_return_to_menu("Sesion guardada. Elige otro superviviente o vuelve a entrar.")
+				get_viewport().set_input_as_handled()
+			elif event.keycode == KEY_R and mode == "game_over":
+				_return_to_menu("Partida terminada. Elige un superviviente para volver a jugar.")
+				get_viewport().set_input_as_handled()
 		return
 	if (event is InputEventKey or event is InputEventMouseButton or event is InputEventJoypadButton) and event.pressed:
 		_assign_input_event(event)
@@ -2864,10 +2917,5 @@ func _unhandled_input(event: InputEvent) -> void:
 		if not username.is_empty():
 			_save_record()
 		_return_to_menu("Sesion guardada. Elige otro superviviente o vuelve a entrar.")
-	elif event.keycode == KEY_R and mode == "game_over":
-		# Desde la pantalla de fin, R siempre devuelve al menú para poder
-		# cambiar nombre o personaje antes de comenzar otra partida.
-		_return_to_menu("Partida terminada. Elige un superviviente para volver a jugar.")
-	elif event.keycode == KEY_R and mode == "playing":
-		_save_record()
-		_start_game()
+	# R durante la partida está reservado para recargar mediante la acción
+	# "reload"; la pantalla de fin se gestiona arriba en _input().
