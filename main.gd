@@ -174,6 +174,8 @@ var scene_transition_layer: CanvasLayer
 var scene_transition_fade: ColorRect
 var scene_transition_label: Label
 var scene_transition_busy := false
+var escape_key_was_down := false
+var reload_key_was_down := false
 const LOADING_TIPS := [
 	"Mantén la distancia: los infectados rodean al objetivo.",
 	"Las oleadas llegan por la carretera del horizonte.",
@@ -232,6 +234,7 @@ func _ready() -> void:
 
 func _process(delta: float) -> void:
 	game_time += delta
+	_poll_keyboard_shortcuts()
 	if loading_layer != null and loading_layer.visible and not boot_loading_finished:
 		loading_tip_timer += delta
 		if loading_tip_timer >= 0.72:
@@ -287,6 +290,25 @@ func _process(delta: float) -> void:
 	if settings_panel != null and settings_panel.visible:
 		_update_controller_status()
 	_apply_camera_shake()
+
+func _poll_keyboard_shortcuts() -> void:
+	# El juego puede ejecutarse embebido en el editor y algunos controles
+	# consumen InputEventKey antes de que llegue a _unhandled_input. Leer el
+	# estado físico del teclado garantiza que Esc y R sigan funcionando.
+	var escape_down := Input.is_key_pressed(KEY_ESCAPE)
+	if escape_down and not escape_key_was_down and mode in ["playing", "upgrade", "game_over"]:
+		if not username.is_empty():
+			_save_record()
+		_return_to_menu("Sesion guardada. Elige otro superviviente o vuelve a entrar.")
+	escape_key_was_down = escape_down
+
+	var reload_down := Input.is_key_pressed(KEY_R)
+	if reload_down and not reload_key_was_down:
+		if mode == "game_over":
+			_return_to_menu("Partida terminada. Elige un superviviente para volver a jugar.")
+		elif mode == "playing":
+			_reload_weapon()
+	reload_key_was_down = reload_down
 
 func _touch_controls_available() -> bool:
 	# En Windows/Linux/macOS el juego se controla con teclado y ratón. En Web,
