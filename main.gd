@@ -134,7 +134,7 @@ var selection_stats_panel: Panel
 var selection_portrait: TextureRect
 var selection_preview: AnimatedSprite2D
 var selection_name: Label
-var selection_description: Label
+var selection_description: RichTextLabel
 var selection_stat_bars: Dictionary = {}
 var selection_stat_values: Dictionary = {}
 var selection_message: Label
@@ -655,15 +655,24 @@ func _build_character_selection_panel(parent: Node) -> void:
 	selection_portrait.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	selection_portrait.visible = false
 	selection_stats_panel.add_child(selection_portrait)
-	selection_description = _label(selection_stats_panel, "Haz clic en un personaje para ver sus estadísticas.", Vector2(100, 99), 12, Color("b9c9c8"))
-	selection_description.size = Vector2(190, 70)
-	selection_description.add_theme_font_size_override("font_size", 11)
+	selection_description = RichTextLabel.new()
+	selection_description.name = "SelectionDescription"
+	selection_description.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	selection_description.offset_left = 100.0
+	selection_description.offset_top = 99.0
+	selection_description.offset_right = -15.0
+	selection_description.offset_bottom = 169.0
+	selection_description.bbcode_enabled = false
+	selection_description.fit_content = false
+	selection_description.scroll_active = false
+	selection_description.clip_contents = true
 	selection_description.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	# Never allow character descriptions to draw outside the statistics panel.
-	# Word wrapping keeps the text readable and ellipsis handles descriptions
-	# that are longer than the reserved portrait area.
-	selection_description.clip_text = true
-	selection_description.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	selection_description.add_theme_font_size_override("normal_font_size", 11)
+	selection_description.add_theme_color_override("default_color", Color("b9c9c8"))
+	selection_description.add_theme_constant_override("line_separation", 2)
+	selection_description.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	selection_description.text = "Haz clic en un personaje para ver sus estadísticas."
+	selection_stats_panel.add_child(selection_description)
 	var stat_names := ["Vida máxima", "Ataque", "Defensa", "Velocidad", "Alcance", "Crítico"]
 	var stat_icon_paths := {
 		"Vida máxima": "res://assets/ui/stats/stat_health.png",
