@@ -111,6 +111,7 @@ var character_highlight: Panel
 var selected_character := -1
 var character_voice_armed := false
 var menu_message: Label
+var voice_debug_label: Label
 var leaderboard_label: Label
 var hud: CanvasLayer
 var score_label: Label
@@ -789,6 +790,12 @@ func _build_menu() -> void:
 	menu_message.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	menu_message.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	menu_message.visible = false
+	voice_debug_label = _label(layer, "", Vector2(24, 680), 11, Color("8de8d0"))
+	voice_debug_label.size = Vector2(1232, 28)
+	voice_debug_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	voice_debug_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	voice_debug_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	voice_debug_label.visible = false
 	leaderboard_label = _label(layer, "", Vector2(365, 580), 14, Color("b9c9c8"))
 	leaderboard_label.size = Vector2(560, 135)
 	leaderboard_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -821,8 +828,36 @@ func _on_name_input_gui_input(event: InputEvent) -> void:
 func _on_character_card_focus(index: int) -> void:
 	if not character_voice_armed or index < 0 or index >= character_data_list.size() or index == selected_character:
 		return
+	_play_character_voice_debug(index, false)
+
+func _play_character_voice_debug(index: int, force: bool) -> void:
+	if index < 0 or index >= character_data_list.size():
+		return
+	var character_id := str(character_data_list[index].id)
+	var started := false
 	if is_instance_valid(audio_manager):
-		audio_manager.call("play_character_voice", str(character_data_list[index].id))
+		started = bool(audio_manager.call("play_character_voice", character_id, force))
+	var voice_path := "desconocida"
+	if character_id == "lumberjack":
+		voice_path = "res://audio/voces/Alexluigui.ogg"
+	elif character_id == "hunter":
+		voice_path = "res://audio/voces/Melo.ogg"
+	elif character_id == "engineer":
+		voice_path = "res://audio/voces/Lobaherida.ogg"
+	elif character_id == "survivor":
+		voice_path = "res://audio/voces/Cristhian.ogg"
+	print("[UI][VOICE_DEBUG] selección | index=", index, " | ID=", character_id, " | started=", started, " | path=", voice_path, " | force=", force)
+	if voice_debug_label != null:
+		voice_debug_label.text = "VOZ DEBUG · ID: %s · ARCHIVO: %s · ESTADO: %s" % [character_id, voice_path.get_file(), "REPRODUCIENDO" if started else "NO DISPONIBLE"]
+		voice_debug_label.visible = true
+		voice_debug_label.modulate = Color.WHITE
+		var debug_tween := create_tween()
+		debug_tween.tween_interval(4.0)
+		debug_tween.tween_property(voice_debug_label, "modulate:a", 0.0, 0.35)
+		debug_tween.tween_callback(func() -> void:
+			voice_debug_label.visible = false
+			voice_debug_label.modulate = Color.WHITE
+		)
 
 func _arm_character_voice() -> void:
 	# Espera un frame para ignorar el foco automático del menú recién creado.
@@ -845,7 +880,7 @@ func _select_character(index: int) -> void:
 	# La voz es el sonido de confirmación de la carta. Se elimina el tono
 	# procedural antiguo que se superponía y ocultaba la voz en Web.
 	if character_changed and is_instance_valid(audio_manager):
-		audio_manager.call("play_character_voice", str(character_data_list[index].id))
+		_play_character_voice_debug(index, true)
 	character_highlight.position = Vector2(260 + index * 160, 325)
 	character_highlight.visible = true
 	character_highlight.scale = Vector2(1.08, 1.08)

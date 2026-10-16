@@ -28,6 +28,12 @@ const CHARACTER_VOICES := {
 	"engineer": preload("res://audio/voces/Lobaherida.ogg"),
 	"survivor": preload("res://audio/voces/Cristhian.ogg")
 }
+const CHARACTER_VOICE_PATHS := {
+	"lumberjack": "res://audio/voces/Alexluigui.ogg",
+	"hunter": "res://audio/voces/Melo.ogg",
+	"engineer": "res://audio/voces/Lobaherida.ogg",
+	"survivor": "res://audio/voces/Cristhian.ogg"
+}
 const SOUND_DURATION := 0.42
 var _players: Array[AudioStreamPlayer] = []
 var _player_cursor := 0
@@ -245,16 +251,19 @@ func play_character_select(character_id: String) -> void:
 
 ## Reproduce la voz asociada al ID interno del personaje.
 ## Se reutiliza un único AudioStreamPlayer para que nunca se solapen voces.
-func play_character_voice(character_id: String) -> void:
+func play_character_voice(character_id: String, force: bool = false) -> bool:
 	if not CHARACTER_VOICES.has(character_id):
 		_warn_missing("voz del personaje con ID interno: " + character_id)
-		return
-	if _character_voice_id == character_id and is_instance_valid(_character_voice_player) and _character_voice_player.playing:
-		return
+		print("[Audio][VOICE][MISSING] ID=", character_id)
+		return false
 	var stream: AudioStream = CHARACTER_VOICES[character_id] as AudioStream
 	if stream == null:
 		_warn_missing("voz precargada del personaje: " + character_id)
-		return
+		print("[Audio][VOICE][NULL] ID=", character_id)
+		return false
+	if not force and _character_voice_id == character_id and is_instance_valid(_character_voice_player) and _character_voice_player.playing:
+		print("[Audio][VOICE][SKIP] ya estaba reproduciéndose | ID=", character_id)
+		return true
 	if not is_instance_valid(_character_voice_player):
 		_character_voice_player = AudioStreamPlayer.new()
 		_character_voice_player.name = "CharacterVoice"
@@ -265,7 +274,12 @@ func play_character_voice(character_id: String) -> void:
 	_character_voice_player.stream = stream
 	_character_voice_id = character_id
 	_character_voice_player.play()
-	print("[Audio] Voz reproducida: ", character_id)
+	var bus_index := AudioServer.get_bus_index(UI_BUS)
+	var bus_db: float = -999.0
+	if bus_index >= 0:
+		bus_db = AudioServer.get_bus_volume_db(bus_index)
+	print("[Audio][VOICE] ID=", character_id, " | path=", str(CHARACTER_VOICE_PATHS.get(character_id, "?")), " | length=", stream.get_length(), " | bus=", UI_BUS, " | bus_db=", bus_db, " | playing=", _character_voice_player.playing, " | force=", force)
+	return true
 
 func stop_character_voice() -> void:
 	if is_instance_valid(_character_voice_player):
