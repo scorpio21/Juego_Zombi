@@ -135,6 +135,7 @@ var selection_preview: AnimatedSprite2D
 var selection_name: Label
 var selection_description: Label
 var selection_stat_bars: Dictionary = {}
+var selection_stat_values: Dictionary = {}
 var selection_message: Label
 var rebinding_action := ""
 var mouse_sensitivity := 1.0
@@ -426,7 +427,7 @@ func _build_menu() -> void:
 	name_input.mouse_filter = Control.MOUSE_FILTER_STOP
 	name_input.virtual_keyboard_enabled = true
 	name_input.virtual_keyboard_show_on_focus = true
-	name_input.virtual_keyboard_type = DisplayServer.KEYBOARD_TYPE_DEFAULT
+	name_input.virtual_keyboard_type = LineEdit.KEYBOARD_TYPE_DEFAULT
 	name_input.add_theme_font_size_override("font_size", 17)
 	name_input.add_theme_color_override("font_color", Color("ecf3f1"))
 	var input_style := StyleBoxFlat.new()
@@ -571,8 +572,8 @@ func _show_selection_panel() -> void:
 	if selection_stats_panel.visible:
 		return
 	selection_stats_panel.visible = true
-	var final_position := Vector2(1010, 215)
-	selection_stats_panel.position = Vector2(1280, 215)
+	var final_position := Vector2(955, 160)
+	selection_stats_panel.position = Vector2(1280, 160)
 	var reveal := create_tween()
 	reveal.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 	reveal.tween_property(selection_stats_panel, "position", final_position, 0.28)
@@ -612,57 +613,99 @@ func _build_character_data() -> void:
 
 func _build_character_selection_panel(parent: Node) -> void:
 	selection_stats_panel = Panel.new()
-	selection_stats_panel.position = Vector2(1010, 215)
-	selection_stats_panel.size = Vector2(250, 405)
+	selection_stats_panel.position = Vector2(955, 160)
+	selection_stats_panel.size = Vector2(305, 480)
 	var panel_style := StyleBoxFlat.new()
-	panel_style.bg_color = Color(0.035, 0.07, 0.09, 0.92)
-	panel_style.border_color = Color("4b8e87")
+	panel_style.bg_color = Color(0.025, 0.055, 0.07, 0.96)
+	panel_style.border_color = Color("347d78")
 	panel_style.set_border_width_all(2)
+	panel_style.corner_radius_top_left = 5
+	panel_style.corner_radius_top_right = 5
+	panel_style.corner_radius_bottom_left = 5
+	panel_style.corner_radius_bottom_right = 5
+	panel_style.shadow_color = Color(0.0, 0.0, 0.0, 0.52)
+	panel_style.shadow_size = 12
 	selection_stats_panel.add_theme_stylebox_override("panel", panel_style)
 	parent.add_child(selection_stats_panel)
 	selection_stats_panel.visible = false
-	var heading := _label(selection_stats_panel, "SUPERVIVIENTE", Vector2(16, 12), 13, Color("65e6c4"))
-	heading.size = Vector2(220, 24)
-	selection_name = _label(selection_stats_panel, "Selecciona un personaje", Vector2(16, 38), 20, Color("f0d28a"))
-	selection_name.size = Vector2(220, 32)
+	var heading := _label(selection_stats_panel, "PERFIL DEL SUPERVIVIENTE", Vector2(18, 12), 12, Color("65e6c4"))
+	heading.size = Vector2(270, 22)
+	selection_name = _label(selection_stats_panel, "Selecciona un personaje", Vector2(18, 35), 21, Color("f0d28a"))
+	selection_name.size = Vector2(270, 32)
 	selection_name.clip_text = true
 	selection_name.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	selection_portrait = TextureRect.new()
-	selection_portrait.position = Vector2(16, 74)
-	selection_portrait.size = Vector2(82, 82)
+	selection_portrait.position = Vector2(18, 98)
+	selection_portrait.size = Vector2(70, 70)
 	selection_portrait.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	selection_portrait.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	selection_portrait.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	selection_portrait.visible = false
 	selection_stats_panel.add_child(selection_portrait)
-	selection_description = _label(selection_stats_panel, "Haz clic en un personaje para ver sus estadísticas.", Vector2(16, 68), 12, Color("b9c9c8"))
-	selection_description.size = Vector2(206, 36)
-	selection_description.add_theme_font_size_override("font_size", 10)
+	selection_description = _label(selection_stats_panel, "Haz clic en un personaje para ver sus estadísticas.", Vector2(100, 99), 12, Color("b9c9c8"))
+	selection_description.size = Vector2(185, 62)
+	selection_description.add_theme_font_size_override("font_size", 11)
 	selection_description.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	selection_description.clip_text = true
 	selection_description.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	var stat_names := ["Vida máxima", "Ataque", "Defensa", "Velocidad", "Alcance", "Crítico"]
+	var stat_icon_paths := {
+		"Vida máxima": "res://assets/ui/stats/stat_health.png",
+		"Ataque": "res://assets/ui/stats/stat_attack.png",
+		"Defensa": "res://assets/ui/stats/stat_defense.png",
+		"Velocidad": "res://assets/ui/stats/stat_speed.png",
+		"Alcance": "res://assets/ui/stats/stat_range.png",
+		"Crítico": "res://assets/ui/stats/stat_critical.png"
+	}
+	var bar_under := load("res://assets/ui/stats/stat_bar_background.png") as Texture2D
+	var bar_progress := load("res://assets/ui/stats/stat_bar_fill.png") as Texture2D
+	var bar_over := load("res://assets/ui/stats/stat_bar_frame.png") as Texture2D
 	for i in range(stat_names.size()):
-		var y := 190.0 + i * 27.0
-		var label := _label(selection_stats_panel, stat_names[i], Vector2(16, y), 11, Color("d5e3df"))
-		label.size = Vector2(78, 20)
-		var bar := ProgressBar.new()
-		bar.position = Vector2(96, y + 2)
-		bar.size = Vector2(136, 12)
+		var stat_name: String = stat_names[i]
+		var y := 190.0 + i * 35.0
+		var icon := TextureRect.new()
+		icon.position = Vector2(18, y - 3)
+		icon.size = Vector2(24, 24)
+		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		icon.texture = load(str(stat_icon_paths[stat_name])) as Texture2D
+		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		selection_stats_panel.add_child(icon)
+		var label := _label(selection_stats_panel, stat_name, Vector2(48, y), 11, Color("d5e3df"))
+		label.size = Vector2(76, 20)
+		label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		var bar := TextureProgressBar.new()
+		bar.position = Vector2(126, y + 1)
+		bar.size = Vector2(126, 19)
 		bar.max_value = 100.0
 		bar.value = 0.0
-		bar.show_percentage = false
+		bar.step = 1.0
+		bar.texture_under = bar_under
+		bar.texture_progress = bar_progress
+		bar.texture_over = bar_over
+		bar.nine_patch_stretch = true
+		bar.stretch_margin_left = 8
+		bar.stretch_margin_top = 7
+		bar.stretch_margin_right = 8
+		bar.stretch_margin_bottom = 7
+		bar.tint_progress = Color("4de8ce")
 		bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		var bg := StyleBoxFlat.new()
-		bg.bg_color = Color("243239")
-		var fill := StyleBoxFlat.new()
-		fill.bg_color = Color("35d8c2")
-		bar.add_theme_stylebox_override("background", bg)
-		bar.add_theme_stylebox_override("fill", fill)
 		selection_stats_panel.add_child(bar)
-		selection_stat_bars[stat_names[i]] = bar
-	var skill := _label(selection_stats_panel, "Habilidad: —", Vector2(16, 370), 12, Color("f0bf6d"))
-	skill.size = Vector2(218, 24)
+		selection_stat_bars[stat_name] = bar
+		var value_label := _label(selection_stats_panel, "00", Vector2(258, y - 1), 12, Color("e8f5ef"))
+		value_label.size = Vector2(31, 21)
+		value_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		value_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		selection_stats_panel.add_child(value_label)
+		selection_stat_values[stat_name] = value_label
+	var divider := ColorRect.new()
+	divider.position = Vector2(18, 410)
+	divider.size = Vector2(269, 1)
+	divider.color = Color(0.30, 0.84, 0.76, 0.22)
+	divider.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	selection_stats_panel.add_child(divider)
+	var skill := _label(selection_stats_panel, "HABILIDAD  ·  —", Vector2(18, 424), 12, Color("f0bf6d"))
+	skill.size = Vector2(269, 28)
 	skill.clip_text = true
 	skill.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	skill.name = "SelectionSkill"
@@ -674,8 +717,8 @@ func _build_character_selection_panel(parent: Node) -> void:
 	selection_message.visible = false
 	selection_preview = AnimatedSprite2D.new()
 	selection_preview.name = "SelectedCharacterPreview"
-	selection_preview.position = Vector2(125, 140)
-	selection_preview.scale = Vector2(1.25, 1.25)
+	selection_preview.position = Vector2(53, 138)
+	selection_preview.scale = Vector2(0.92, 0.92)
 	selection_preview.z_index = 4
 	selection_preview.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	selection_preview.visible = false
@@ -699,10 +742,13 @@ func _refresh_character_selection() -> void:
 		"Crítico": data.critical_chance * 100.0
 	}
 	for stat_name in selection_stat_bars.keys():
-		var bar: ProgressBar = selection_stat_bars[stat_name]
-		bar.value = float(values[stat_name])
+		var stat_value := clampf(float(values[stat_name]), 0.0, 100.0)
+		var bar: TextureProgressBar = selection_stat_bars[stat_name]
+		bar.value = stat_value
+		var value_label: Label = selection_stat_values[stat_name]
+		value_label.text = "%02d" % int(round(stat_value))
 	var skill_label: Label = selection_stats_panel.get_node("SelectionSkill")
-	skill_label.text = "Habilidad: %s" % data.special_ability
+	skill_label.text = "HABILIDAD  ·  %s" % data.special_ability
 	if selection_preview != null:
 		var texture: Texture2D = survivor_directional_sheets[selected_character] if selected_character < survivor_directional_sheets.size() else null
 		selection_preview.sprite_frames = _build_selection_preview_frames(texture)
