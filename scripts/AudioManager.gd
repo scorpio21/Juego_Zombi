@@ -143,7 +143,9 @@ func _resume_music_after(duration: float) -> void:
 				music.stream_paused = false
 
 func start_loading_ambience() -> void:
+	print("[Audio][AMBIENT] start_loading_ambience()")
 	if is_instance_valid(_ambient_player) and _ambient_player.playing:
+		print("[Audio][AMBIENT] ya estaba reproduciéndose")
 		return
 	if not is_instance_valid(_ambient_player):
 		_ambient_player = AudioStreamPlayer.new()
@@ -158,6 +160,7 @@ func start_loading_ambience() -> void:
 	_ambient_time = 0.0
 	_ambient_player.play()
 	_ambient_playback = _ambient_player.get_stream_playback() as AudioStreamGeneratorPlayback
+	print("[Audio][AMBIENT] playing=", _ambient_player.playing, " | bus=", AMBIENT_BUS)
 
 func stop_loading_ambience() -> void:
 	if is_instance_valid(_ambient_player):
@@ -165,7 +168,9 @@ func stop_loading_ambience() -> void:
 	_ambient_playback = null
 
 func start_loading_music() -> void:
+	print("[Audio][MUSIC] start_loading_music() | path=", LOADING_MUSIC_PATH)
 	if is_instance_valid(_loading_music_player) and _loading_music_player.playing:
+		print("[Audio][MUSIC] carga ya estaba reproduciéndose")
 		return
 	var stream := _load_cached_stream(LOADING_MUSIC_PATH)
 	if stream != null:
@@ -179,7 +184,9 @@ func start_loading_music() -> void:
 		_loading_music_player.play()
 		var fade_in := create_tween()
 		fade_in.tween_property(_loading_music_player, "volume_db", -8.0, 1.15)
+		print("[Audio][MUSIC] Cargando.ogg OK | playing=", _loading_music_player.playing, " | volume inicial=-42 dB | bus=", MUSIC_BUS)
 		return
+	print("[Audio][MUSIC][MISSING] no se pudo cargar ", LOADING_MUSIC_PATH, " | se usa fallback procedural")
 	# Fallback procedural si el OGG no está disponible o no pudo importarse.
 	if is_instance_valid(_music_player) and _music_player.playing:
 		return
@@ -196,6 +203,7 @@ func start_loading_music() -> void:
 	_music_time = 0.0
 	_music_player.play()
 	_music_playback = _music_player.get_stream_playback() as AudioStreamGeneratorPlayback
+	print("[Audio][MUSIC] fallback procedural carga | playing=", _music_player.playing, " | bus=", MUSIC_BUS)
 
 func stop_loading_music() -> void:
 	if is_instance_valid(_loading_music_player):
@@ -215,8 +223,10 @@ func fade_out_loading_music(duration: float = 0.45) -> void:
 	_music_playback = null
 
 func start_menu_music() -> void:
+	print("[Audio][MUSIC] start_menu_music() | path=", MENU_MUSIC_PATH)
 	var stream := _load_cached_stream(MENU_MUSIC_PATH)
 	if stream == null:
+		print("[Audio][MUSIC][MISSING] no se pudo cargar ", MENU_MUSIC_PATH)
 		return
 	var ogg := stream as AudioStreamOggVorbis
 	if ogg != null:
@@ -233,6 +243,15 @@ func start_menu_music() -> void:
 		_menu_music_player.play()
 	var fade_in := create_tween()
 	fade_in.tween_property(_menu_music_player, "volume_db", -10.0, 1.0)
+	print("[Audio][MUSIC] Menu_principal.ogg OK | playing=", _menu_music_player.playing, " | loop=", ogg != null, " | bus=", MUSIC_BUS)
+
+func resume_loading_music_after_gesture() -> void:
+	print("[Audio][MUSIC] reanudación por interacción del usuario: carga")
+	start_loading_music()
+
+func resume_menu_music_after_gesture() -> void:
+	print("[Audio][MUSIC] reanudación por interacción del usuario: menú")
+	start_menu_music()
 
 func fade_out_menu_music(duration: float = 0.35) -> void:
 	if not is_instance_valid(_menu_music_player) or not _menu_music_player.playing:
@@ -395,12 +414,15 @@ func _load_safe_stream(sound_path: String, fallback_path: String) -> AudioStream
 
 func _load_cached_stream(path: String) -> AudioStream:
 	if _audio_cache.has(path):
+		print("[Audio][CACHE] recurso ya cacheado: ", path)
 		return _audio_cache[path] as AudioStream
 	if not ResourceLoader.exists(path):
+		print("[Audio][LOAD][MISSING] ResourceLoader.exists=false: ", path)
 		return null
 	var resource := ResourceLoader.load(path)
 	if resource is AudioStream:
 		_audio_cache[path] = resource
+		print("[Audio][LOAD] AudioStream cargado: ", path)
 		return resource as AudioStream
 	_warn_missing(path + " (recurso no compatible)")
 	return null

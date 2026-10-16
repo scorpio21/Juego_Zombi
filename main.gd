@@ -2964,6 +2964,18 @@ func _return_to_menu_after_transition(message: String) -> void:
 	_refresh_leaderboard()
 
 func _input(event: InputEvent) -> void:
+	# Los navegadores Web bloquean la reproducción automática hasta el primer
+	# gesto del usuario. Reintentamos la música correcta en ese gesto.
+	var user_gesture := false
+	if event is InputEventMouseButton:
+		user_gesture = event.pressed
+	elif event is InputEventScreenTouch:
+		user_gesture = event.pressed
+	if user_gesture and is_instance_valid(audio_manager):
+		if loading_layer != null and loading_layer.visible:
+			audio_manager.call("resume_loading_music_after_gesture")
+		elif mode == "menu":
+			audio_manager.call("resume_menu_music_after_gesture")
 	if rebinding_action == "":
 		if event is InputEventKey and event.pressed and not event.echo:
 			if event.keycode == KEY_F or event.keycode == KEY_ESCAPE:
