@@ -799,10 +799,10 @@ func _build_character_data() -> void:
 	# same CharacterData structure used by the selection UI and can later be
 	# replaced by .tres resources without changing the rest of the code.
 	var definitions := [
-		["lumberjack", "Leñador", "Fuerte y resistente. Abre camino con su hacha.", 140, 30, 12, 185.0, 0.08, "Golpe de hacha"],
-		["hunter", "Cazador", "Experto a distancia y en golpes críticos.", 100, 38, 7, 300.0, 0.18, "Disparo preciso"],
-		["engineer", "Ingeniera", "Usa herramientas para resistir más tiempo.", 115, 24, 15, 210.0, 0.10, "Reparación"],
-		["survivor", "Superviviente", "Equilibrado, rápido y preparado para cualquier situación.", 125, 28, 10, 225.0, 0.12, "Adrenalina"]
+		["lumberjack", "AlexLuigui", "Fuerte y resistente; abre camino con su hacha.", 140, 30, 12, 185.0, 0.08, "Golpe de hacha"],
+		["hunter", "Melo", "Especialista a distancia y en golpes críticos.", 100, 38, 7, 300.0, 0.18, "Disparo preciso"],
+		["engineer", "Cristhian", "Especialista en herramientas y reparación; resiste más tiempo.", 115, 24, 15, 210.0, 0.10, "Reparación"],
+		["survivor", "Loba Herida", "Sobrevive herida, pero sigue siendo equilibrada, rápida y decidida.", 125, 28, 10, 225.0, 0.12, "Adrenalina"]
 	]
 	for definition in definitions:
 		var data = CHARACTER_DATA_SCRIPT.new()

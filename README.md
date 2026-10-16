@@ -90,7 +90,7 @@ Mejoras disponibles:
 - **Paso Ligero** — aumenta la velocidad de movimiento.
 - **Botiquín** — recupera vidas hasta el límite permitido.
 - **Balas Pesadas** — mejora los proyectiles y la cadencia.
-- **Superviviente** — proporciona protección temporal.
+- **Loba Herida** — proporciona protección temporal.
 
 Rarezas:
 
