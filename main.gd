@@ -1897,7 +1897,7 @@ func _show_upgrade_choices() -> void:
 		var card: Button = upgrade_buttons[i]
 		var entry_tween := create_tween()
 		entry_tween.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-		entry_tween.set_delay(float(i) * 0.08)
+		entry_tween.tween_interval(float(i) * 0.08)
 		entry_tween.parallel().tween_property(card, "position", card.get_meta("base_position"), 0.42)
 		entry_tween.parallel().tween_property(card, "scale", Vector2.ONE, 0.42)
 		entry_tween.parallel().tween_property(card, "modulate", Color.WHITE, 0.24)
