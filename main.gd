@@ -102,6 +102,8 @@ var username := ""
 var records: Dictionary = {}
 var rng := RandomNumberGenerator.new()
 var name_input: LineEdit
+var menu_layer: CanvasLayer
+var bestiary_layer: CanvasLayer
 var start_button: Button
 var settings_button: Button
 var exit_button: Button
@@ -129,6 +131,7 @@ var upgrade_buttons: Array[Button] = []
 var overlay: ColorRect
 var title_label: Label
 var title_glow_label: Label
+var menu_background: TextureRect
 var storm_effect
 var subtitle_label: Label
 var settings_panel: ColorRect
@@ -173,6 +176,8 @@ var boot_loading_finished := false
 var scene_transition_layer: CanvasLayer
 var scene_transition_fade: ColorRect
 var scene_transition_label: Label
+var responsive_layout_scale := 1.0
+var responsive_layout_offset := Vector2.ZERO
 var scene_transition_busy := false
 var escape_key_was_down := false
 var reload_key_was_down := false
@@ -187,6 +192,7 @@ const LOADING_TIPS := [
 func _ready() -> void:
 	# Keep atlas frames pixel-perfect: linear filtering leaks neighboring cells.
 	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	get_viewport().size_changed.connect(_on_viewport_size_changed)
 	audio_manager = get_node_or_null("/root/AudioManager")
 	zombie_scene = load("res://scenes/enemies/zombie.tscn") as PackedScene
 	bestiary_scene = load("res://scenes/ui/bestiary.tscn") as PackedScene
@@ -215,7 +221,7 @@ func _ready() -> void:
 	_build_world_parallax()
 	_build_world_camera()
 	bestiary = bestiary_scene.instantiate() if bestiary_scene != null else null
-	var bestiary_layer := CanvasLayer.new()
+	bestiary_layer = CanvasLayer.new()
 	bestiary_layer.name = "BestiaryLayer"
 	bestiary_layer.layer = 20
 	add_child(bestiary_layer)
@@ -232,6 +238,67 @@ func _ready() -> void:
 	queue_redraw()
 	if is_instance_valid(audio_manager):
 		audio_manager.call("start_menu_music")
+	call_deferred("_on_viewport_size_changed")
+
+func _on_viewport_size_changed() -> void:
+	var viewport_size := get_viewport_rect().size
+	if viewport_size.x <= 1.0 or viewport_size.y <= 1.0:
+		return
+	# Preserve the 16:9 art direction while using every available pixel.
+	responsive_layout_scale = minf(viewport_size.x / WORLD_SIZE.x, viewport_size.y / WORLD_SIZE.y)
+	responsive_layout_scale = maxf(responsive_layout_scale, 0.5)
+	responsive_layout_offset = (viewport_size - WORLD_SIZE * responsive_layout_scale) * 0.5
+	var ui_transform := Transform2D(
+		Vector2(responsive_layout_scale, 0.0),
+		Vector2(0.0, responsive_layout_scale),
+		responsive_layout_offset
+	)
+	for layer in [menu_layer, hud, loading_layer, scene_transition_layer, bestiary_layer]:
+		if is_instance_valid(layer):
+			layer.transform = ui_transform
+	if is_instance_valid(menu_background):
+		# The background remains full-bleed while the interactive UI keeps the
+		# centered 16:9 composition.
+		menu_background.position = -responsive_layout_offset / responsive_layout_scale
+		menu_background.size = viewport_size / responsive_layout_scale
+	if is_instance_valid(storm_effect):
+		storm_effect.position = -responsive_layout_offset / responsive_layout_scale
+		storm_effect.size = viewport_size / responsive_layout_scale
+	_layout_touch_controls(viewport_size)
+
+func _layout_touch_controls(viewport_size: Vector2) -> void:
+	if not is_instance_valid(touch_root) or not is_instance_valid(touch_joystick):
+		return
+	touch_root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	var shortest_side := minf(viewport_size.x, viewport_size.y)
+	var control_size := clampf(shortest_side * 0.22, 132.0, 210.0)
+	var margin := clampf(shortest_side * 0.035, 22.0, 48.0)
+	# Safe-area insets protect notches and the home indicator. Some platforms
+	# report physical pixels, so each inset is clamped to a safe fraction.
+	var safe_area := DisplayServer.get_display_safe_area()
+	var safe_left := clampf(safe_area.position.x, 0.0, viewport_size.x * 0.12)
+	var safe_right := clampf(viewport_size.x - safe_area.end.x, 0.0, viewport_size.x * 0.12)
+	var safe_bottom := clampf(viewport_size.y - safe_area.end.y, 0.0, viewport_size.y * 0.12)
+	var left_margin := margin + safe_left
+	var right_margin := margin + safe_right
+	var bottom_margin := margin + safe_bottom
+	touch_joystick.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
+	touch_joystick.offset_left = left_margin
+	touch_joystick.offset_top = -(control_size + bottom_margin)
+	touch_joystick.offset_right = left_margin + control_size
+	touch_joystick.offset_bottom = -bottom_margin
+	touch_shoot_button.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+	touch_shoot_button.offset_left = -(right_margin + control_size)
+	touch_shoot_button.offset_top = -(control_size + bottom_margin)
+	touch_shoot_button.offset_right = -right_margin
+	touch_shoot_button.offset_bottom = -bottom_margin
+	var reload_height := clampf(control_size * 0.34, 52.0, 72.0)
+	var reload_width := control_size * 0.90
+	touch_reload_button.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+	touch_reload_button.offset_left = -(right_margin + reload_width)
+	touch_reload_button.offset_top = -(control_size + bottom_margin + reload_height + 14.0)
+	touch_reload_button.offset_right = -right_margin
+	touch_reload_button.offset_bottom = -(control_size + bottom_margin + 14.0)
 
 func _process(delta: float) -> void:
 	game_time += delta
@@ -620,7 +687,8 @@ func _play_scene_transition(callback: Callable, message: String) -> void:
 	)
 
 func _build_menu() -> void:
-	var layer := CanvasLayer.new()
+	menu_layer = CanvasLayer.new()
+	var layer := menu_layer
 	layer.name = "MenuLayer"
 	add_child(layer)
 	var bg := ColorRect.new()
@@ -628,7 +696,8 @@ func _build_menu() -> void:
 	bg.size = WORLD_SIZE
 	bg.color = Color("091018")
 	layer.add_child(bg)
-	var menu_image := TextureRect.new()
+	menu_background = TextureRect.new()
+	var menu_image := menu_background
 	menu_image.position = Vector2.ZERO
 	menu_image.size = WORLD_SIZE
 	menu_image.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
@@ -1416,6 +1485,7 @@ func _build_touch_controls() -> void:
 	touch_reload_button.pressed.connect(_on_touch_reload)
 	touch_root.add_child(touch_reload_button)
 	touch_root.visible = false
+	_layout_touch_controls(get_viewport_rect().size)
 
 func _create_touch_button(text: String, accent: Color) -> Button:
 	var button := Button.new()

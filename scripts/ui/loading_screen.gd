@@ -34,11 +34,14 @@ var progress_bar: TextureProgressBar
 var progress_label: Label
 var tip_label: Label
 var status_label: Label
+var loading_content: Control
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	get_viewport().size_changed.connect(_on_viewport_size_changed)
 	_build_screen()
+	_on_viewport_size_changed()
 	var audio := get_node_or_null("/root/AudioManager")
 	if audio != null and audio.has_method("start_loading_ambience"):
 		audio.start_loading_ambience()
@@ -94,6 +97,15 @@ func _process(delta: float) -> void:
 	if loaded_scene != null and not scene_change_started and elapsed >= MINIMUM_DURATION:
 		_finish_loading()
 
+func _on_viewport_size_changed() -> void:
+	if not is_instance_valid(loading_content):
+		return
+	var viewport_size := get_viewport_rect().size
+	var scale := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	scale = maxf(scale, 0.5)
+	loading_content.scale = Vector2.ONE * scale
+	loading_content.position = (viewport_size - Vector2(1280.0, 720.0) * scale) * 0.5
+
 func _build_screen() -> void:
 	var background := TextureRect.new()
 	background.name = "DestroyedCityBackground"
@@ -126,14 +138,19 @@ func _build_screen() -> void:
 	shade.color = Color(0.0, 0.0, 0.0, 0.22)
 	shade.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(shade)
+	loading_content = Control.new()
+	loading_content.name = "LoadingContent"
+	loading_content.size = Vector2(1280.0, 720.0)
+	loading_content.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(loading_content)
 	logo_label = _make_label("NOCHE DE LOS INFECTADOS", Vector2(150, 190), Vector2(980, 64), 42, Color("e7f7fb"))
 	logo_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	logo_label.add_theme_constant_override("outline_size", 5)
 	logo_label.add_theme_color_override("font_outline_color", Color(0.08, 0.48, 0.72, 0.95))
-	add_child(logo_label)
+	loading_content.add_child(logo_label)
 	tip_label = _make_label(TIPS[0], Vector2(190, 372), Vector2(900, 34), 16, Color("d0dddd"))
 	tip_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	add_child(tip_label)
+	loading_content.add_child(tip_label)
 	progress_bar = TextureProgressBar.new()
 	progress_bar.name = "MetalLoadingBar"
 	progress_bar.position = Vector2(390, 460)
@@ -150,7 +167,7 @@ func _build_screen() -> void:
 	progress_bar.stretch_margin_right = 20
 	progress_bar.stretch_margin_bottom = 8
 	progress_bar.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
-	add_child(progress_bar)
+	loading_content.add_child(progress_bar)
 	var bar_shine := ColorRect.new()
 	bar_shine.name = "MovingBarShine"
 	bar_shine.position = Vector2(390, 460)
@@ -161,7 +178,7 @@ func _build_screen() -> void:
 	shine_shader.code = "shader_type canvas_item;\nuniform float time = 0.0;\nvoid fragment(){float band=1.0-smoothstep(0.0,0.18,abs(fract(UV.x-time*0.16)-0.5)*2.0);COLOR=vec4(0.72,0.96,1.0,band*0.12);;}"
 	bar_shine_material.shader = shine_shader
 	bar_shine.material = bar_shine_material
-	add_child(bar_shine)
+	loading_content.add_child(bar_shine)
 	var particle_material := ParticleProcessMaterial.new()
 	particle_material.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_BOX
 	particle_material.emission_box_extents = Vector3(640.0, 340.0, 0.0)
@@ -182,12 +199,12 @@ func _build_screen() -> void:
 	dust_image.fill(Color(0.72, 0.88, 0.88, 0.22))
 	dust_particles.texture = ImageTexture.create_from_image(dust_image)
 	dust_particles.z_index = 2
-	add_child(dust_particles)
+	loading_content.add_child(dust_particles)
 	progress_label = _make_label("000%", Vector2(920, 458), Vector2(80, 30), 14, Color("9bd8db"))
-	add_child(progress_label)
+	loading_content.add_child(progress_label)
 	status_label = _make_label("PREPARANDO LA NOCHE...", Vector2(300, 505), Vector2(680, 28), 13, Color("9bd8db"))
 	status_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	add_child(status_label)
+	loading_content.add_child(status_label)
 	outro_flash = ColorRect.new()
 	outro_flash.name = "SoftFlash"
 	outro_flash.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
