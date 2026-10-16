@@ -298,6 +298,7 @@ func _poll_keyboard_shortcuts() -> void:
 	# estado físico del teclado garantiza que Esc y R sigan funcionando.
 	var escape_down := Input.is_key_pressed(KEY_ESCAPE)
 	if escape_down and not escape_key_was_down and mode in ["playing", "upgrade", "game_over"]:
+		print("[DEBUG][MENU] Escape detectado por polling | modo=", mode, " | transition_busy=", scene_transition_busy)
 		if not username.is_empty():
 			_save_record()
 		_return_to_menu("Sesion guardada. Elige otro superviviente o vuelve a entrar.")
@@ -311,6 +312,7 @@ func _poll_keyboard_shortcuts() -> void:
 
 	var menu_down := Input.is_key_pressed(KEY_F)
 	if menu_down and not menu_key_was_down and mode in ["playing", "upgrade", "game_over"]:
+		print("[DEBUG][MENU] F detectada por polling | modo=", mode, " | transition_busy=", scene_transition_busy)
 		_return_to_menu("Sesion guardada. Elige otro superviviente o vuelve a entrar.")
 	menu_key_was_down = menu_down
 
@@ -2884,6 +2886,7 @@ func _write_records() -> void:
 	file.store_string(JSON.stringify(records))
 
 func _return_to_menu(message: String) -> void:
+	print("[DEBUG][MENU] _return_to_menu llamado | modo=", mode, " | transition_busy=", scene_transition_busy, " | mensaje=", message)
 	if scene_transition_busy:
 		# Una transición interrumpida no debe bloquear el regreso al menú.
 		scene_transition_busy = false
@@ -2892,6 +2895,7 @@ func _return_to_menu(message: String) -> void:
 	_play_scene_transition(Callable(self, "_return_to_menu_after_transition").bind(message), "REGRESANDO AL REFUGIO...")
 
 func _return_to_menu_after_transition(message: String) -> void:
+	print("[DEBUG][MENU] _return_to_menu_after_transition ejecutado | mensaje=", message)
 	mode = "menu"
 	touch_move = Vector2.ZERO
 	touch_shoot_pressed = false
@@ -2925,6 +2929,8 @@ func _return_to_menu_after_transition(message: String) -> void:
 func _input(event: InputEvent) -> void:
 	if rebinding_action == "":
 		if event is InputEventKey and event.pressed and not event.echo:
+			if event.keycode == KEY_F or event.keycode == KEY_ESCAPE:
+				print("[DEBUG][MENU] Evento de teclado recibido | tecla=", event.keycode, " | modo=", mode)
 			# _input recibe la tecla antes que los controles de la interfaz;
 			# así Escape y R siguen funcionando aunque un Button tenga el foco.
 			if event.keycode == KEY_ESCAPE and mode in ["playing", "upgrade", "game_over"]:
