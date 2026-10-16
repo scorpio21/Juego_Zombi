@@ -254,7 +254,7 @@ func _process(delta: float) -> void:
 			_update_hud()
 	_update_weather(delta)
 	if touch_root != null:
-		touch_root.visible = mode == "playing" and not upgrade_selecting
+		touch_root.visible = _touch_controls_available() and mode == "playing" and not upgrade_selecting
 	if mode == "playing":
 		_update_game(delta)
 		_update_player_sprite()
@@ -287,6 +287,11 @@ func _process(delta: float) -> void:
 	if settings_panel != null and settings_panel.visible:
 		_update_controller_status()
 	_apply_camera_shake()
+
+func _touch_controls_available() -> bool:
+	# En Windows/Linux/macOS el juego se controla con teclado y ratón. En Web,
+	# DisplayServer detecta correctamente los móviles con pantalla táctil.
+	return OS.has_feature("mobile") or DisplayServer.is_touchscreen_available()
 
 func _weather_profile(weather_name: String) -> Dictionary:
 	match weather_name:
