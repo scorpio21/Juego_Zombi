@@ -176,6 +176,7 @@ var scene_transition_label: Label
 var scene_transition_busy := false
 var escape_key_was_down := false
 var reload_key_was_down := false
+var menu_key_was_down := false
 const LOADING_TIPS := [
 	"Mantén la distancia: los infectados rodean al objetivo.",
 	"Las oleadas llegan por la carretera del horizonte.",
@@ -304,11 +305,14 @@ func _poll_keyboard_shortcuts() -> void:
 
 	var reload_down := Input.is_key_pressed(KEY_R)
 	if reload_down and not reload_key_was_down:
-		if mode == "game_over":
-			_return_to_menu("Partida terminada. Elige un superviviente para volver a jugar.")
-		elif mode == "playing":
+		if mode == "playing":
 			_reload_weapon()
 	reload_key_was_down = reload_down
+
+	var menu_down := Input.is_key_pressed(KEY_F)
+	if menu_down and not menu_key_was_down and mode in ["playing", "upgrade", "game_over"]:
+		_return_to_menu("Sesion guardada. Elige otro superviviente o vuelve a entrar.")
+	menu_key_was_down = menu_down
 
 func _touch_controls_available() -> bool:
 	# En Windows/Linux/macOS el juego se controla con teclado y ratón. En Web,
@@ -2671,7 +2675,7 @@ func _end_game() -> void:
 		player_sprite.flip_h = false
 		player_sprite.play("death")
 	_save_record()
-	game_over_label.text = "FIN DE LA NOCHE\nPUNTUACION  %06d\nPulsa R para volver al menú" % score
+	game_over_label.text = "FIN DE LA NOCHE\nPUNTUACION  %06d\nPulsa F para volver al menú" % score
 	game_over_label.visible = true
 	status_label.text = "HAS CAIDO, %s" % username.to_upper()
 	_update_hud()
@@ -2881,7 +2885,10 @@ func _write_records() -> void:
 
 func _return_to_menu(message: String) -> void:
 	if scene_transition_busy:
-		return
+		# Una transición interrumpida no debe bloquear el regreso al menú.
+		scene_transition_busy = false
+		if scene_transition_layer != null:
+			scene_transition_layer.visible = false
 	_play_scene_transition(Callable(self, "_return_to_menu_after_transition").bind(message), "REGRESANDO AL REFUGIO...")
 
 func _return_to_menu_after_transition(message: String) -> void:
@@ -2925,8 +2932,8 @@ func _input(event: InputEvent) -> void:
 					_save_record()
 				_return_to_menu("Sesion guardada. Elige otro superviviente o vuelve a entrar.")
 				get_viewport().set_input_as_handled()
-			elif event.keycode == KEY_R and mode == "game_over":
-				_return_to_menu("Partida terminada. Elige un superviviente para volver a jugar.")
+			elif event.keycode == KEY_F and mode in ["playing", "upgrade", "game_over"]:
+				_return_to_menu("Sesion guardada. Elige otro superviviente o vuelve a entrar.")
 				get_viewport().set_input_as_handled()
 		return
 	if (event is InputEventKey or event is InputEventMouseButton or event is InputEventJoypadButton) and event.pressed:
@@ -2945,4 +2952,4 @@ func _unhandled_input(event: InputEvent) -> void:
 			_save_record()
 		_return_to_menu("Sesion guardada. Elige otro superviviente o vuelve a entrar.")
 	# R durante la partida está reservado para recargar mediante la acción
-	# "reload"; la pantalla de fin se gestiona arriba en _input().
+	# "reload". F y Escape gestionan el regreso al menú.
