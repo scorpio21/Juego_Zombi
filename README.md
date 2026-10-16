@@ -72,8 +72,8 @@ Los nombres mostrados al jugador y sus identificadores de guardado están separa
 | --- | --- | --- |
 | `lumberjack` | AlexLuigui | `audio/voces/Alexluigui.ogg` |
 | `hunter` | Melo | `audio/voces/Melo.ogg` |
-| `engineer` | Cristhian | `audio/voces/Lobaherida.ogg` |
-| `survivor` | Loba Herida | `audio/voces/Cristhian.ogg` |
+| `engineer` | Loba Herida | `audio/voces/Lobaherida.ogg` |
+| `survivor` | Cristhian | `audio/voces/Cristhian.ogg` |
 
 Las voces se reproducen al pasar el cursor, cambiar el foco con teclado/gamepad o seleccionar mediante controles táctiles. El sistema reutiliza un solo reproductor para evitar solapamientos.
 

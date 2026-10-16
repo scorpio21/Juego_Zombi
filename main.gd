@@ -832,8 +832,8 @@ func _build_character_data() -> void:
 	var definitions := [
 		["lumberjack", "AlexLuigui", "Fuerte y resistente; abre camino con su hacha.", 140, 30, 12, 185.0, 0.08, "Golpe de hacha"],
 		["hunter", "Melo", "Especialista a distancia y en golpes críticos.", 100, 38, 7, 300.0, 0.18, "Disparo preciso"],
-		["engineer", "Cristhian", "Especialista en herramientas y reparación; resiste más tiempo.", 115, 24, 15, 210.0, 0.10, "Reparación"],
-		["survivor", "Loba Herida", "Sobrevive herida, pero sigue siendo equilibrada, rápida y decidida.", 125, 28, 10, 225.0, 0.12, "Adrenalina"]
+		["engineer", "Loba Herida", "Especialista en herramientas y reparación; resiste más tiempo.", 115, 24, 15, 210.0, 0.10, "Reparación"],
+		["survivor", "Cristhian", "Sobrevive herido, pero sigue siendo equilibrado, rápido y decidido.", 125, 28, 10, 225.0, 0.12, "Adrenalina"]
 	]
 	for definition in definitions:
 		var data = CHARACTER_DATA_SCRIPT.new()
