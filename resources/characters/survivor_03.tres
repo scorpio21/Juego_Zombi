@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="CharacterData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/characters/character_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = "engineer"
+display_name = "Ingeniera"
+description = "Prepara herramientas y defensas para sobrevivir más tiempo."
+max_health = 115
+attack_power = 24
+defense = 15
+speed = 210.0
+attack_range = 210.0
+critical_chance = 0.10
+special_ability = "Reparación"
+

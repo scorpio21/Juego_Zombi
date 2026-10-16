@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ClimateSettings" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/world/climate_settings.gd" id="1_settings"]
+
+[resource]
+script = ExtResource("1_settings")
+configuration_name = "Fácil"
+day_duration = 300.0
+night_duration = 180.0
+rain_probability = 0.16
+fog_probability = 0.08
+storm_probability = 0.05
+rain_intensity = 0.65
+fog_intensity = 0.55
+lightning_frequency = 9.0
+night_zombie_bonus = 0.005
+climate_transition_speed = 2.4
+min_change_interval = 110.0
+max_change_interval = 220.0

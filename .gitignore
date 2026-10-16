@@ -1,0 +1,20 @@
+# Godot 4 editor cache and imported resources
+.godot/
+
+# Local/editor settings
+.vscode/
+
+# Generated logs and diagnostics
+*.log
+
+# Exported builds
+build/
+export/
+*.exe
+*.apk
+*.zip
+
+# OS files
+Thumbs.db
+Desktop.ini
+.DS_Store
