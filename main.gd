@@ -683,8 +683,15 @@ func _build_character_selection_panel(parent: Node) -> void:
 		"Crítico": "res://assets/ui/stats/stat_critical.png"
 	}
 	var bar_under := load("res://assets/ui/stats/stat_bar_bg.png") as Texture2D
-	var bar_progress := load("res://assets/ui/stats/stat_bar_fill.png") as Texture2D
 	var bar_over := load("res://assets/ui/stats/stat_bar_frame.png") as Texture2D
+	var bar_progress_paths := {
+		"Vida máxima": "res://assets/ui/stats/life_fill.png",
+		"Ataque": "res://assets/ui/stats/attack_fill.png",
+		"Defensa": "res://assets/ui/stats/defense_fill.png",
+		"Velocidad": "res://assets/ui/stats/speed_fill.png",
+		"Alcance": "res://assets/ui/stats/range_fill.png",
+		"Crítico": "res://assets/ui/stats/critical_fill.png"
+	}
 	for i in range(stat_names.size()):
 		var stat_name: String = stat_names[i]
 		var y := 190.0 + i * 35.0
@@ -706,7 +713,7 @@ func _build_character_selection_panel(parent: Node) -> void:
 		bar.value = 0.0
 		bar.step = 1.0
 		bar.texture_under = bar_under
-		bar.texture_progress = bar_progress
+		bar.texture_progress = load(str(bar_progress_paths[stat_name])) as Texture2D
 		bar.texture_over = bar_over
 		bar.nine_patch_stretch = true
 		# The PNGs contain the complete material, lighting and wear. Keep the
