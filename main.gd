@@ -422,6 +422,11 @@ func _build_menu() -> void:
 	name_input.placeholder_text = "Enter your name"
 	name_input.max_length = 18
 	name_input.alignment = HORIZONTAL_ALIGNMENT_CENTER
+	name_input.focus_mode = Control.FOCUS_ALL
+	name_input.mouse_filter = Control.MOUSE_FILTER_STOP
+	name_input.virtual_keyboard_enabled = true
+	name_input.virtual_keyboard_show_on_focus = true
+	name_input.virtual_keyboard_type = DisplayServer.KEYBOARD_TYPE_DEFAULT
 	name_input.add_theme_font_size_override("font_size", 17)
 	name_input.add_theme_color_override("font_color", Color("ecf3f1"))
 	var input_style := StyleBoxFlat.new()
@@ -432,6 +437,7 @@ func _build_menu() -> void:
 	input_style.border_width_bottom = 1
 	input_style.border_color = Color(0.5, 0.8, 0.8, 0.35)
 	name_input.add_theme_stylebox_override("normal", input_style)
+	name_input.gui_input.connect(_on_name_input_gui_input)
 	layer.add_child(name_input)
 	character_highlight = Panel.new()
 	character_highlight.position = Vector2(322, 325)
@@ -519,6 +525,29 @@ func _build_menu() -> void:
 	leaderboard_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	leaderboard_label.visible = false
 	_refresh_leaderboard()
+
+func _on_name_input_gui_input(event: InputEvent) -> void:
+	var pressed := false
+	if event is InputEventScreenTouch:
+		pressed = event.pressed
+	elif event is InputEventMouseButton:
+		pressed = event.pressed and event.button_index == MOUSE_BUTTON_LEFT
+	if not pressed or name_input == null:
+		return
+
+	# El toque debe conservar el gesto del usuario: los navegadores móviles
+	# bloquean el teclado si se solicita automáticamente desde _ready().
+	name_input.grab_focus()
+	if OS.has_feature("web") and DisplayServer.has_feature(DisplayServer.FEATURE_VIRTUAL_KEYBOARD):
+		var cursor := name_input.caret_column
+		DisplayServer.virtual_keyboard_show(
+			name_input.text,
+			name_input.get_global_rect(),
+			DisplayServer.KEYBOARD_TYPE_DEFAULT,
+			name_input.max_length,
+			cursor,
+			cursor
+		)
 
 func _select_character(index: int) -> void:
 	if index < 0 or index >= character_data_list.size():
