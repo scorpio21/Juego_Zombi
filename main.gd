@@ -724,7 +724,12 @@ func _build_menu() -> void:
 	layer.add_child(bestiary_button)
 	_build_settings_panel(layer)
 	_build_stats_panel(layer)
-	menu_message = _label(layer, "WASD para moverte  •  Ratón para apuntar  •  Click para disparar", Vector2(390, 550), 14, Color("7e969f"))
+	# Zona independiente sobre el botón para evitar que los avisos de
+	# validación se dibujen encima de START GAME.
+	menu_message = _label(layer, "WASD para moverte  •  Ratón para apuntar  •  Click para disparar", Vector2(390, 510), 14, Color("7e969f"))
+	menu_message.size = Vector2(560, 28)
+	menu_message.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	menu_message.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	menu_message.visible = false
 	leaderboard_label = _label(layer, "", Vector2(365, 580), 14, Color("b9c9c8"))
 	leaderboard_label.size = Vector2(560, 135)
