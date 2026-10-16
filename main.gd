@@ -793,10 +793,12 @@ func _on_character_card_pressed(index: int) -> void:
 func _select_character(index: int) -> void:
 	if index < 0 or index >= character_data_list.size():
 		return
+	var character_changed := index != selected_character
 	selected_character = index
-	if is_instance_valid(audio_manager):
-		audio_manager.call("play_character_select", str(character_data_list[index].id))
-		audio_manager.call("play_ui_event", "character_change")
+	# La voz es el sonido de confirmación de la carta. Se elimina el tono
+	# procedural antiguo que se superponía y ocultaba la voz en Web.
+	if character_changed and is_instance_valid(audio_manager):
+		audio_manager.call("play_character_voice", str(character_data_list[index].id))
 	character_highlight.position = Vector2(260 + index * 160, 325)
 	character_highlight.visible = true
 	character_highlight.scale = Vector2(1.08, 1.08)
@@ -1894,10 +1896,8 @@ func _start_game() -> void:
 		return
 	username = name_input.text.strip_edges()
 	if username.is_empty():
-		menu_message.text = "Escribe un nombre para guardar tu record."
-		menu_message.add_theme_color_override("font_color", Color("d96d6f"))
-		menu_message.visible = true
-		return
+		username = "Jugador"
+		name_input.text = username
 	menu_message.visible = false
 	_play_scene_transition(Callable(self, "_start_game_after_transition"), "ENTRANDO EN LA NOCHE...")
 
@@ -1912,10 +1912,8 @@ func _start_game_after_transition() -> void:
 		return
 	username = name_input.text.strip_edges()
 	if username.is_empty():
-		menu_message.text = "Escribe un nombre para guardar tu record."
-		menu_message.add_theme_color_override("font_color", Color("d96d6f"))
-		menu_message.visible = true
-		return
+		username = "Jugador"
+		name_input.text = username
 	menu_message.visible = false
 	var player_stats := _normalize_record(records.get(username, {}))
 	player_stats["plays"] = int(player_stats["plays"]) + 1
