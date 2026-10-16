@@ -104,6 +104,7 @@ var stats_button: Button
 var character_buttons: Array[Button] = []
 var character_highlight: Panel
 var selected_character := -1
+var character_voice_armed := false
 var menu_message: Label
 var leaderboard_label: Label
 var hud: CanvasLayer
@@ -651,6 +652,7 @@ func _build_menu() -> void:
 	character_highlight.position = Vector2(260, 325)
 	character_highlight.visible = selected_character >= 0
 	character_highlight.size = Vector2(160, 200)
+	character_highlight.pivot_offset = character_highlight.size * 0.5
 	character_highlight.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var highlight_style := StyleBoxFlat.new()
 	highlight_style.bg_color = Color(0.0, 0.8, 0.65, 0.04)
@@ -688,6 +690,10 @@ func _build_menu() -> void:
 		character_button.pressed.connect(_on_character_card_pressed.bind(i))
 		layer.add_child(character_button)
 		character_buttons.append(character_button)
+	# Godot puede dar foco al primer Button al construir el menú. Ese foco
+	# inicial no debe reproducir una voz sin interacción del jugador.
+	character_voice_armed = false
+	call_deferred("_arm_character_voice")
 	_build_character_selection_panel(layer)
 	start_button = Button.new()
 	start_button.position = Vector2(488, 548)
@@ -766,14 +772,20 @@ func _on_name_input_gui_input(event: InputEvent) -> void:
 		)
 
 func _on_character_card_focus(index: int) -> void:
-	if index < 0 or index >= character_data_list.size() or index == selected_character:
+	if not character_voice_armed or index < 0 or index >= character_data_list.size() or index == selected_character:
 		return
 	if is_instance_valid(audio_manager):
 		audio_manager.call("play_character_voice", str(character_data_list[index].id))
 
+func _arm_character_voice() -> void:
+	# Espera un frame para ignorar el foco automático del menú recién creado.
+	await get_tree().process_frame
+	character_voice_armed = true
+
 func _on_character_card_pressed(index: int) -> void:
 	# En táctil el Button puede no emitir focus_entered; la selección garantiza
 	# igualmente la reproducción de la voz antes de aplicar el personaje.
+	character_voice_armed = true
 	if index != selected_character:
 		_on_character_card_focus(index)
 	_select_character(index)
@@ -787,6 +799,9 @@ func _select_character(index: int) -> void:
 		audio_manager.call("play_ui_event", "character_change")
 	character_highlight.position = Vector2(260 + index * 160, 325)
 	character_highlight.visible = true
+	character_highlight.scale = Vector2(1.08, 1.08)
+	var highlight_pulse := create_tween()
+	highlight_pulse.tween_property(character_highlight, "scale", Vector2.ONE, 0.24).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	_show_selection_panel()
 	_refresh_character_selection()
 	if selection_message != null:

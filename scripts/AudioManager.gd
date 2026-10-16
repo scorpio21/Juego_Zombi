@@ -22,8 +22,8 @@ const MENU_MUSIC_PATH := "res://audio/menu/Menu_principal.ogg"
 const CHARACTER_VOICE_PATHS := {
 	"lumberjack": ["res://audio/voices/Alexluigui.ogg", "res://audio/voces/Alexluigui.ogg"],
 	"hunter": ["res://audio/voices/Melo.ogg", "res://audio/voces/Melo.ogg"],
-	"engineer": ["res://audio/voices/Cristhian.ogg", "res://audio/voces/Cristhian.ogg"],
-	"survivor": ["res://audio/voices/Lobaherida.ogg", "res://audio/voces/Lobaherida.ogg"]
+	"engineer": ["res://audio/voices/Lobaherida.ogg", "res://audio/voces/Lobaherida.ogg"],
+	"survivor": ["res://audio/voices/Cristhian.ogg", "res://audio/voces/Cristhian.ogg"]
 }
 const SOUND_DURATION := 0.42
 var _players: Array[AudioStreamPlayer] = []
