@@ -19,11 +19,14 @@ const SFX_BUS := "SFX"
 const WORLD_BUS := "World"
 const LOADING_MUSIC_PATH := "res://audio/menu/Cargando.ogg"
 const MENU_MUSIC_PATH := "res://audio/menu/Menu_principal.ogg"
-const CHARACTER_VOICE_PATHS := {
-	"lumberjack": ["res://audio/voices/Alexluigui.ogg", "res://audio/voces/Alexluigui.ogg"],
-	"hunter": ["res://audio/voices/Melo.ogg", "res://audio/voces/Melo.ogg"],
-	"engineer": ["res://audio/voices/Lobaherida.ogg", "res://audio/voces/Lobaherida.ogg"],
-	"survivor": ["res://audio/voices/Cristhian.ogg", "res://audio/voces/Cristhian.ogg"]
+# Las voces se precargan de forma explícita. Esto evita que el export Web
+# descarte los OGG o que ResourceLoader.exists() falle al buscar recursos
+# importados durante el arranque del navegador.
+const CHARACTER_VOICES := {
+	"lumberjack": preload("res://audio/voces/Alexluigui.ogg"),
+	"hunter": preload("res://audio/voces/Melo.ogg"),
+	"engineer": preload("res://audio/voces/Lobaherida.ogg"),
+	"survivor": preload("res://audio/voces/Cristhian.ogg")
 }
 const SOUND_DURATION := 0.42
 var _players: Array[AudioStreamPlayer] = []
@@ -243,31 +246,26 @@ func play_character_select(character_id: String) -> void:
 ## Reproduce la voz asociada al ID interno del personaje.
 ## Se reutiliza un único AudioStreamPlayer para que nunca se solapen voces.
 func play_character_voice(character_id: String) -> void:
-	if not CHARACTER_VOICE_PATHS.has(character_id):
+	if not CHARACTER_VOICES.has(character_id):
 		_warn_missing("voz del personaje con ID interno: " + character_id)
 		return
 	if _character_voice_id == character_id and is_instance_valid(_character_voice_player) and _character_voice_player.playing:
 		return
-	var voice_paths: Array = CHARACTER_VOICE_PATHS[character_id]
-	var stream: AudioStream = null
-	for path in voice_paths:
-		stream = _load_cached_stream(str(path))
-		if stream != null:
-			print("[Audio] Voz de personaje cargada: ", path)
-			break
+	var stream: AudioStream = CHARACTER_VOICES[character_id] as AudioStream
 	if stream == null:
-		for path in voice_paths:
-			_warn_missing(str(path))
+		_warn_missing("voz precargada del personaje: " + character_id)
 		return
 	if not is_instance_valid(_character_voice_player):
 		_character_voice_player = AudioStreamPlayer.new()
 		_character_voice_player.name = "CharacterVoice"
 		_character_voice_player.bus = UI_BUS
+		_character_voice_player.volume_db = 0.0
 		add_child(_character_voice_player)
 	_character_voice_player.stop()
 	_character_voice_player.stream = stream
 	_character_voice_id = character_id
 	_character_voice_player.play()
+	print("[Audio] Voz reproducida: ", character_id)
 
 func stop_character_voice() -> void:
 	if is_instance_valid(_character_voice_player):
