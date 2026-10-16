@@ -358,10 +358,14 @@ func _install_web_audio_unlock() -> void:
     Object.keys(window.__nocheAudio).forEach(function(key){
       var audio = window.__nocheAudio[key];
       if (!audio) return;
-      var promise = audio.play();
-      if (promise && promise.catch) promise.catch(function(error){
-        console.warn('[Audio][WEB][BLOCKED]', key, error.name, error.message);
-      });
+      // Solo reanudar bucles o audios bloqueados que aún no han terminado.
+      // No reiniciar voces ya finalizadas al disparar o tocar la pantalla.
+      if (audio.loop || !audio.ended) {
+        var promise = audio.play();
+        if (promise && promise.catch) promise.catch(function(error){
+          console.warn('[Audio][WEB][BLOCKED]', key, error.name, error.message);
+        });
+      }
     });
     console.log('[Audio][WEB] gesto nativo detectado; reproductores desbloqueados');
   };

@@ -826,12 +826,12 @@ func _on_name_input_gui_input(event: InputEvent) -> void:
 		)
 
 func _on_character_card_focus(index: int) -> void:
-	if not character_voice_armed or index < 0 or index >= character_data_list.size() or index == selected_character:
+	if mode != "menu" or not character_voice_armed or index < 0 or index >= character_data_list.size() or index == selected_character:
 		return
 	_play_character_voice_debug(index, false)
 
 func _play_character_voice_debug(index: int, force: bool) -> void:
-	if index < 0 or index >= character_data_list.size():
+	if mode != "menu" or index < 0 or index >= character_data_list.size():
 		return
 	var character_id := str(character_data_list[index].id)
 	var started := false
@@ -865,6 +865,8 @@ func _arm_character_voice() -> void:
 	character_voice_armed = true
 
 func _on_character_card_pressed(index: int) -> void:
+	if mode != "menu":
+		return
 	# En táctil el Button puede no emitir focus_entered; la selección garantiza
 	# igualmente la reproducción de la voz antes de aplicar el personaje.
 	character_voice_armed = true
@@ -873,7 +875,7 @@ func _on_character_card_pressed(index: int) -> void:
 	_select_character(index)
 
 func _select_character(index: int) -> void:
-	if index < 0 or index >= character_data_list.size():
+	if mode != "menu" or index < 0 or index >= character_data_list.size():
 		return
 	var character_changed := index != selected_character
 	selected_character = index
@@ -2004,6 +2006,7 @@ func _start_game_after_transition() -> void:
 	if mode == "playing":
 		return
 	if is_instance_valid(audio_manager):
+		audio_manager.call("stop_character_voice")
 		audio_manager.call("stop_loading_ambience")
 		audio_manager.call("fade_out_menu_music", 0.35)
 		audio_manager.call("play_game_event", "start_game")
@@ -2411,6 +2414,8 @@ func _unlock_evolution(upgrade_id: String) -> void:
 		evolution_unlocked[upgrade_id] = true
 
 func _show_upgrade_choices() -> void:
+	if is_instance_valid(audio_manager):
+		audio_manager.call("stop_character_voice")
 	upgrade_timer = 0.0
 	upgrade_pending = true
 	mode = "upgrade"
@@ -2932,6 +2937,8 @@ func _return_to_menu(message: String) -> void:
 
 func _return_to_menu_after_transition(message: String) -> void:
 	print("[DEBUG][MENU] _return_to_menu_after_transition ejecutado | mensaje=", message)
+	if is_instance_valid(audio_manager):
+		audio_manager.call("stop_character_voice")
 	mode = "menu"
 	touch_move = Vector2.ZERO
 	touch_shoot_pressed = false
