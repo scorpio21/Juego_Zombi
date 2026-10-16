@@ -6,14 +6,13 @@ param(
     [string]$ProjectDirectory
 )
 
-$html = Get-ChildItem -LiteralPath $ExportDirectory -Filter '*.html' |
-    Where-Object { $_.Name -notlike '*.offline.html' } |
-    Select-Object -First 1
-if ($null -eq $html) {
+
+$htmlFiles = @(Get-ChildItem -LiteralPath $ExportDirectory -Filter '*.html' |
+    Where-Object { $_.Name -notlike '*.offline.html' })
+if ($htmlFiles.Count -eq 0) {
     throw "No se encontró el HTML exportado en $ExportDirectory"
 }
 
-$htmlText = Get-Content -LiteralPath $html.FullName -Raw
 $style = @'
 
 /* Pantalla visible antes de que arranque el runtime de Godot. */
@@ -46,13 +45,16 @@ body {
 }
 '@
 
-if ($htmlText -notmatch 'id="status-brand"') {
-    $htmlText = $htmlText.Replace('<progress id="status-progress"></progress>', '<div id="status-brand">NOCHE DE LOS INFECTADOS</div><progress id="status-progress"></progress>')
+foreach ($html in $htmlFiles) {
+    $htmlText = Get-Content -LiteralPath $html.FullName -Raw
+    if ($htmlText -notmatch 'id="status-brand"') {
+        $htmlText = $htmlText.Replace('<progress id="status-progress"></progress>', '<div id="status-brand">NOCHE DE LOS INFECTADOS</div><progress id="status-progress"></progress>')
+    }
+    if ($htmlText -notmatch 'Pantalla visible antes') {
+        $htmlText = $htmlText.Replace('</style>', $style + "`r`n`t`t</style>")
+    }
+    Set-Content -LiteralPath $html.FullName -Value $htmlText -Encoding utf8
 }
-if ($htmlText -notmatch 'Pantalla visible antes') {
-    $htmlText = $htmlText.Replace('</style>', $style + "`r`n`t`t</style>")
-}
-Set-Content -LiteralPath $html.FullName -Value $htmlText -Encoding utf8
 
 $background = Join-Path $ProjectDirectory 'assets\backgrounds\menu_apocalypse.png'
 Copy-Item -LiteralPath $background -Destination (Join-Path $ExportDirectory 'loading-backdrop.png') -Force
