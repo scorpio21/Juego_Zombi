@@ -64,6 +64,19 @@ La partida combina acción inmediata con progresión estratégica:
 | Audio | ✅ | `AudioManager` global, bus de mejoras, sonidos por carta/rareza y fallback seguro. |
 | Exportación multiplataforma | 🟡 | Windows, Web e iOS configurados; Linux y Android requieren añadir presets. |
 
+### Personajes
+
+Los nombres mostrados al jugador y sus identificadores de guardado están separados para mantener la compatibilidad de las partidas:
+
+| ID interno | Nombre visible | Voz de selección |
+| --- | --- | --- |
+| `lumberjack` | AlexLuigui | `audio/voces/Alexluigui.ogg` |
+| `hunter` | Melo | `audio/voces/Melo.ogg` |
+| `engineer` | Cristhian | `audio/voces/Lobaherida.ogg` |
+| `survivor` | Loba Herida | `audio/voces/Cristhian.ogg` |
+
+Las voces se reproducen al pasar el cursor, cambiar el foco con teclado/gamepad o seleccionar mediante controles táctiles. El sistema reutiliza un solo reproductor para evitar solapamientos.
+
 ## Mecánicas
 
 ### Combate
@@ -218,7 +231,8 @@ El bestiario registra enemigos cuando mueren. Incluye datos como nombre, nivel, 
 ├── audio/
 │   ├── cards/             # Aparición, hover, selección y fallback
 │   ├── upgrades/          # Sonidos específicos de mejoras
-│   └── rarity/            # Sonidos por rareza
+│   ├── rarity/            # Sonidos por rareza
+│   └── voces/             # Voces de selección de personajes
 ├── docs/
 │   ├── images/            # Capturas, banner y arte promocional
 │   ├── gifs/              # GIFs de gameplay y sistemas
