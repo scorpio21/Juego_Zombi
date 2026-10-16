@@ -19,6 +19,12 @@ const SFX_BUS := "SFX"
 const WORLD_BUS := "World"
 const LOADING_MUSIC_PATH := "res://audio/menu/Cargando.ogg"
 const MENU_MUSIC_PATH := "res://audio/menu/Menu_principal.ogg"
+const CHARACTER_VOICE_PATHS := {
+	"lumberjack": ["res://audio/voices/Alexluigui.ogg", "res://audio/voces/Alexluigui.ogg"],
+	"hunter": ["res://audio/voices/Melo.ogg", "res://audio/voces/Melo.ogg"],
+	"engineer": ["res://audio/voices/Cristhian.ogg", "res://audio/voces/Cristhian.ogg"],
+	"survivor": ["res://audio/voices/Lobaherida.ogg", "res://audio/voces/Lobaherida.ogg"]
+}
 const SOUND_DURATION := 0.42
 var _players: Array[AudioStreamPlayer] = []
 var _player_cursor := 0
@@ -33,6 +39,8 @@ var _music_playback: AudioStreamGeneratorPlayback
 var _music_time := 0.0
 var _loading_music_player: AudioStreamPlayer
 var _menu_music_player: AudioStreamPlayer
+var _character_voice_player: AudioStreamPlayer
+var _character_voice_id := ""
 
 func _ready() -> void:
 	_ensure_bus(SFX_BUS, -1.0)
@@ -231,6 +239,40 @@ func play_ui_event(event_name: String) -> void:
 
 func play_character_select(character_id: String) -> void:
 	_play_preset(_character_preset(character_id), UI_BUS)
+
+## Reproduce la voz asociada al ID interno del personaje.
+## Se reutiliza un único AudioStreamPlayer para que nunca se solapen voces.
+func play_character_voice(character_id: String) -> void:
+	if not CHARACTER_VOICE_PATHS.has(character_id):
+		_warn_missing("voz del personaje con ID interno: " + character_id)
+		return
+	if _character_voice_id == character_id and is_instance_valid(_character_voice_player) and _character_voice_player.playing:
+		return
+	var voice_paths: Array = CHARACTER_VOICE_PATHS[character_id]
+	var stream: AudioStream = null
+	for path in voice_paths:
+		stream = _load_cached_stream(str(path))
+		if stream != null:
+			print("[Audio] Voz de personaje cargada: ", path)
+			break
+	if stream == null:
+		for path in voice_paths:
+			_warn_missing(str(path))
+		return
+	if not is_instance_valid(_character_voice_player):
+		_character_voice_player = AudioStreamPlayer.new()
+		_character_voice_player.name = "CharacterVoice"
+		_character_voice_player.bus = UI_BUS
+		add_child(_character_voice_player)
+	_character_voice_player.stop()
+	_character_voice_player.stream = stream
+	_character_voice_id = character_id
+	_character_voice_player.play()
+
+func stop_character_voice() -> void:
+	if is_instance_valid(_character_voice_player):
+		_character_voice_player.stop()
+	_character_voice_id = ""
 
 func play_game_event(event_name: String) -> void:
 	_play_preset(_game_preset(event_name), WORLD_BUS)

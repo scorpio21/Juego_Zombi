@@ -682,7 +682,10 @@ func _build_menu() -> void:
 		character_button.text = ""
 		character_button.flat = true
 		character_button.modulate = Color(1, 1, 1, 0.02)
-		character_button.pressed.connect(_select_character.bind(i))
+		character_button.focus_mode = Control.FOCUS_ALL
+		character_button.mouse_entered.connect(_on_character_card_focus.bind(i))
+		character_button.focus_entered.connect(_on_character_card_focus.bind(i))
+		character_button.pressed.connect(_on_character_card_pressed.bind(i))
 		layer.add_child(character_button)
 		character_buttons.append(character_button)
 	_build_character_selection_panel(layer)
@@ -761,6 +764,19 @@ func _on_name_input_gui_input(event: InputEvent) -> void:
 			cursor,
 			cursor
 		)
+
+func _on_character_card_focus(index: int) -> void:
+	if index < 0 or index >= character_data_list.size() or index == selected_character:
+		return
+	if is_instance_valid(audio_manager):
+		audio_manager.call("play_character_voice", str(character_data_list[index].id))
+
+func _on_character_card_pressed(index: int) -> void:
+	# En táctil el Button puede no emitir focus_entered; la selección garantiza
+	# igualmente la reproducción de la voz antes de aplicar el personaje.
+	if index != selected_character:
+		_on_character_card_focus(index)
+	_select_character(index)
 
 func _select_character(index: int) -> void:
 	if index < 0 or index >= character_data_list.size():
