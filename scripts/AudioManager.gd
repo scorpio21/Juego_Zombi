@@ -50,6 +50,7 @@ var _loading_music_player: AudioStreamPlayer
 var _menu_music_player: AudioStreamPlayer
 var _character_voice_player: AudioStreamPlayer
 var _character_voice_id := ""
+var _web_audio_unlocked := false
 
 func _ready() -> void:
 	_ensure_bus(SFX_BUS, -1.0)
@@ -173,6 +174,11 @@ func start_loading_music() -> void:
 		print("[Audio][MUSIC] carga ya estaba reproduciéndose")
 		return
 	var stream := _load_cached_stream(LOADING_MUSIC_PATH)
+	if OS.has_feature("web") and _web_audio_unlocked:
+		_play_web_audio("loading_music", "audio/menu/Cargando.ogg", true, 0.42)
+		if is_instance_valid(_loading_music_player):
+			_loading_music_player.stop()
+		return
 	if stream != null:
 		if not is_instance_valid(_loading_music_player):
 			_loading_music_player = AudioStreamPlayer.new()
@@ -206,6 +212,7 @@ func start_loading_music() -> void:
 	print("[Audio][MUSIC] fallback procedural carga | playing=", _music_player.playing, " | bus=", MUSIC_BUS)
 
 func stop_loading_music() -> void:
+	_stop_web_audio("loading_music")
 	if is_instance_valid(_loading_music_player):
 		_loading_music_player.stop()
 	if is_instance_valid(_music_player):
@@ -220,11 +227,17 @@ func fade_out_loading_music(duration: float = 0.45) -> void:
 		await tween.finished
 		active_player.stop()
 		active_player.volume_db = -8.0
+	_stop_web_audio("loading_music")
 	_music_playback = null
 
 func start_menu_music() -> void:
 	print("[Audio][MUSIC] start_menu_music() | path=", MENU_MUSIC_PATH)
 	var stream := _load_cached_stream(MENU_MUSIC_PATH)
+	if OS.has_feature("web") and _web_audio_unlocked:
+		_play_web_audio("menu_music", "audio/menu/Menu_principal.ogg", true, 0.42)
+		if is_instance_valid(_menu_music_player):
+			_menu_music_player.stop()
+		return
 	if stream == null:
 		print("[Audio][MUSIC][MISSING] no se pudo cargar ", MENU_MUSIC_PATH)
 		return
@@ -247,13 +260,20 @@ func start_menu_music() -> void:
 
 func resume_loading_music_after_gesture() -> void:
 	print("[Audio][MUSIC] reanudación por interacción del usuario: carga")
+	_unlock_web_audio()
+	if OS.has_feature("web"):
+		_play_web_audio("loading_music", "audio/menu/Cargando.ogg", true, 0.42)
 	start_loading_music()
 
 func resume_menu_music_after_gesture() -> void:
 	print("[Audio][MUSIC] reanudación por interacción del usuario: menú")
+	_unlock_web_audio()
+	if OS.has_feature("web"):
+		_play_web_audio("menu_music", "audio/menu/Menu_principal.ogg", true, 0.42)
 	start_menu_music()
 
 func fade_out_menu_music(duration: float = 0.35) -> void:
+	_stop_web_audio("menu_music")
 	if not is_instance_valid(_menu_music_player) or not _menu_music_player.playing:
 		return
 	var tween := create_tween()
@@ -283,6 +303,13 @@ func play_character_voice(character_id: String, force: bool = false) -> bool:
 	if not force and _character_voice_id == character_id and is_instance_valid(_character_voice_player) and _character_voice_player.playing:
 		print("[Audio][VOICE][SKIP] ya estaba reproduciéndose | ID=", character_id)
 		return true
+	if OS.has_feature("web") and _web_audio_unlocked:
+		stop_character_voice()
+		_character_voice_id = character_id
+		var web_path := str(CHARACTER_VOICE_PATHS.get(character_id, ""))
+		_play_web_audio("character_voice", web_path.replace("res://", ""), false, 0.95)
+		print("[Audio][VOICE][WEB] HTMLAudio solicitado | ID=", character_id, " | path=", web_path)
+		return true
 	if not is_instance_valid(_character_voice_player):
 		_character_voice_player = AudioStreamPlayer.new()
 		_character_voice_player.name = "CharacterVoice"
@@ -304,6 +331,49 @@ func stop_character_voice() -> void:
 	if is_instance_valid(_character_voice_player):
 		_character_voice_player.stop()
 	_character_voice_id = ""
+	if OS.has_feature("web"):
+		_stop_web_audio("character_voice")
+
+func _unlock_web_audio() -> void:
+	if not OS.has_feature("web"):
+		return
+	_web_audio_unlocked = true
+	JavaScriptBridge.eval("window.__nocheAudioUnlocked = true;", true)
+	print("[Audio][WEB] audio HTML5 desbloqueado por gesto del usuario")
+
+func _play_web_audio(key: String, relative_path: String, loop: bool, volume: float) -> void:
+	if not OS.has_feature("web"):
+		return
+	var key_json := JSON.stringify(key)
+	var path_json := JSON.stringify(relative_path)
+	var loop_js := "true" if loop else "false"
+	var js := """
+(function(){
+  window.__nocheAudio = window.__nocheAudio || {};
+  var key = %s;
+  var path = %s;
+  var audio = window.__nocheAudio[key];
+  if (!audio) {
+    audio = new Audio(path);
+    audio.preload = 'auto';
+    window.__nocheAudio[key] = audio;
+  }
+  audio.loop = %s;
+  audio.volume = %s;
+  audio.muted = false;
+  if (audio.src !== new URL(path, document.baseURI).href) audio.src = path;
+  var result = audio.play();
+  if (result && result.catch) result.catch(function(error){ console.warn('[Audio][WEB][BLOCKED]', key, error); });
+  console.log('[Audio][WEB] HTMLAudio play()', key, audio.src, 'paused=', audio.paused, 'muted=', audio.muted);
+})();
+""" % [key_json, path_json, loop_js, str(volume)]
+	JavaScriptBridge.eval(js, true)
+
+func _stop_web_audio(key: String) -> void:
+	if not OS.has_feature("web"):
+		return
+	var key_json := JSON.stringify(key)
+	JavaScriptBridge.eval("(function(){var a=window.__nocheAudio&&window.__nocheAudio[%s];if(a){a.pause();a.currentTime=0;}})();" % key_json, true)
 
 func play_game_event(event_name: String) -> void:
 	_play_preset(_game_preset(event_name), WORLD_BUS)
