@@ -441,7 +441,7 @@ func _build_menu() -> void:
 	name_input.gui_input.connect(_on_name_input_gui_input)
 	layer.add_child(name_input)
 	character_highlight = Panel.new()
-	character_highlight.position = Vector2(322, 325)
+	character_highlight.position = Vector2(260, 325)
 	character_highlight.visible = selected_character >= 0
 	character_highlight.size = Vector2(160, 200)
 	character_highlight.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -458,8 +458,8 @@ func _build_menu() -> void:
 		var survivor_cell := Vector2(survivor_sheet.get_width() / 4.0, survivor_sheet.get_height())
 		for i in range(4):
 			var survivor_view := TextureRect.new()
-			survivor_view.position = Vector2(335 + i * 168, 340)
-			survivor_view.size = Vector2(134, 174)
+			survivor_view.position = Vector2(275 + i * 160, 340)
+			survivor_view.size = Vector2(125, 174)
 			survivor_view.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 			survivor_view.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 			survivor_view.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -470,8 +470,8 @@ func _build_menu() -> void:
 			layer.add_child(survivor_view)
 	for i in range(4):
 		var character_button := Button.new()
-		character_button.position = Vector2(322 + i * 168, 325)
-		character_button.size = Vector2(160, 200)
+		character_button.position = Vector2(260 + i * 160, 325)
+		character_button.size = Vector2(150, 200)
 		character_button.text = ""
 		character_button.flat = true
 		character_button.modulate = Color(1, 1, 1, 0.02)
@@ -554,7 +554,7 @@ func _select_character(index: int) -> void:
 	if index < 0 or index >= character_data_list.size():
 		return
 	selected_character = index
-	character_highlight.position = Vector2(322 + index * 168, 325)
+	character_highlight.position = Vector2(260 + index * 160, 325)
 	character_highlight.visible = true
 	_show_selection_panel()
 	_refresh_character_selection()
@@ -643,11 +643,11 @@ func _build_character_selection_panel(parent: Node) -> void:
 	selection_portrait.visible = false
 	selection_stats_panel.add_child(selection_portrait)
 	selection_description = _label(selection_stats_panel, "Haz clic en un personaje para ver sus estadísticas.", Vector2(100, 99), 12, Color("b9c9c8"))
-	selection_description.size = Vector2(185, 62)
+	selection_description.size = Vector2(190, 70)
 	selection_description.add_theme_font_size_override("font_size", 11)
 	selection_description.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	selection_description.clip_text = true
-	selection_description.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	selection_description.clip_text = false
+	selection_description.text_overrun_behavior = TextServer.OVERRUN_NO_TRIMMING
 	var stat_names := ["Vida máxima", "Ataque", "Defensa", "Velocidad", "Alcance", "Crítico"]
 	var stat_icon_paths := {
 		"Vida máxima": "res://assets/ui/stats/stat_health.png",
