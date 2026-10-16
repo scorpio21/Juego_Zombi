@@ -146,7 +146,7 @@ var camera_shake_strength := 0.0
 var upgrade_lightning_flash: ColorRect
 var touch_layer: CanvasLayer
 var touch_root: Control
-var touch_joystick: TouchJoystick
+var touch_joystick: Control
 var touch_shoot_button: Button
 var touch_reload_button: Button
 var touch_move := Vector2.ZERO
@@ -1072,7 +1072,7 @@ func _build_touch_controls() -> void:
 	touch_joystick.offset_top = -214.0
 	touch_joystick.offset_right = 214.0
 	touch_joystick.offset_bottom = -34.0
-	touch_joystick.vector_changed.connect(_on_touch_move_changed)
+	touch_joystick.connect("vector_changed", Callable(self, "_on_touch_move_changed"))
 	touch_root.add_child(touch_joystick)
 
 	touch_shoot_button = _create_touch_button("DISPARAR", Color("e85b63"))
