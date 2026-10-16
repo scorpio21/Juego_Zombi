@@ -12,16 +12,51 @@ extends Node
 @export var use_procedural_fallback: bool = true
 
 const UPGRADE_BUS := "Upgrades"
+const UI_BUS := "UI"
+const AMBIENT_BUS := "Ambient"
+const WORLD_BUS := "World"
 const SOUND_DURATION := 0.42
 var _players: Array[AudioStreamPlayer] = []
 var _player_cursor := 0
 var _music_players: Array[AudioStreamPlayer] = []
 var _audio_cache: Dictionary = {}
 var _audio_warnings: Dictionary = {}
+var _ambient_player: AudioStreamPlayer
+var _ambient_playback: AudioStreamGeneratorPlayback
+var _ambient_time := 0.0
 
 func _ready() -> void:
 	_ensure_upgrade_bus()
+	_ensure_bus(UI_BUS, -2.0)
+	_ensure_bus(AMBIENT_BUS, -12.0)
+	_ensure_bus(WORLD_BUS, -1.0)
 	_build_player_pool()
+	set_process(true)
+
+func _process(delta: float) -> void:
+	if _ambient_playback == null:
+		return
+	_ambient_time += delta
+	var frames_available := mini(_ambient_playback.get_frames_available(), 1024)
+	for frame in range(frames_available):
+		var t := _ambient_time + float(frame) / float(generator_mix_rate)
+		var wind := sin(TAU * 42.0 * t) * 0.022 + sin(TAU * 57.0 * t) * 0.012
+		var cricket_gate := maxf(0.0, sin(t * 1.7))
+		var crickets := sin(TAU * 2350.0 * t) * 0.006 * cricket_gate
+		var crow_phase := fmod(t, 7.0)
+		var crow := sin(TAU * (270.0 - crow_phase * 30.0) * t) * maxf(0.0, 1.0 - crow_phase * 2.8) * 0.012
+		var noise := randf_range(-0.006, 0.006)
+		var sample := clampf(wind + crickets + crow + noise, -0.08, 0.08)
+		_ambient_playback.push_frame(Vector2(sample, sample))
+
+func _ensure_bus(bus_name: String, volume_db: float) -> void:
+	var bus_index := AudioServer.get_bus_index(bus_name)
+	if bus_index < 0:
+		AudioServer.add_bus()
+		bus_index = AudioServer.bus_count - 1
+		AudioServer.set_bus_name(bus_index, bus_name)
+	AudioServer.set_bus_send(bus_index, "Master")
+	AudioServer.set_bus_volume_db(bus_index, volume_db)
 
 func _ensure_upgrade_bus() -> void:
 	var bus_index := AudioServer.get_bus_index(UPGRADE_BUS)
@@ -64,6 +99,37 @@ func _resume_music_after(duration: float) -> void:
 		for music in _music_players:
 			if is_instance_valid(music):
 				music.stream_paused = false
+
+func start_loading_ambience() -> void:
+	if is_instance_valid(_ambient_player) and _ambient_player.playing:
+		return
+	if not is_instance_valid(_ambient_player):
+		_ambient_player = AudioStreamPlayer.new()
+		_ambient_player.name = "LoadingNightAmbience"
+		_ambient_player.bus = AMBIENT_BUS
+		_ambient_player.volume_db = -2.0
+		add_child(_ambient_player)
+	var generator := AudioStreamGenerator.new()
+	generator.mix_rate = generator_mix_rate
+	generator.buffer_length = 0.25
+	_ambient_player.stream = generator
+	_ambient_time = 0.0
+	_ambient_player.play()
+	_ambient_playback = _ambient_player.get_stream_playback() as AudioStreamGeneratorPlayback
+
+func stop_loading_ambience() -> void:
+	if is_instance_valid(_ambient_player):
+		_ambient_player.stop()
+	_ambient_playback = null
+
+func play_ui_event(event_name: String) -> void:
+	_play_preset(_ui_preset(event_name), UI_BUS)
+
+func play_character_select(character_id: String) -> void:
+	_play_preset(_character_preset(character_id), UI_BUS)
+
+func play_game_event(event_name: String) -> void:
+	_play_preset(_game_preset(event_name), WORLD_BUS)
 
 func play_upgrade_event(upgrade_id: String, event_name: String, rarity: String = "COMÚN") -> void:
 	if not upgrades_enabled or _players.is_empty():
@@ -199,7 +265,7 @@ func _play_stream(stream: AudioStream) -> void:
 func play_rarity(rarity: String, event_name: String = "appear") -> void:
 	play_rarity_sound(rarity, event_name)
 
-func _play_preset(preset: Dictionary) -> void:
+func _play_preset(preset: Dictionary, bus_name: String = UPGRADE_BUS) -> void:
 	var player: AudioStreamPlayer = _players[_player_cursor % _players.size()]
 	_player_cursor += 1
 	var generator := player.stream as AudioStreamGenerator
@@ -208,6 +274,7 @@ func _play_preset(preset: Dictionary) -> void:
 		generator.mix_rate = generator_mix_rate
 		generator.buffer_length = 0.8
 		player.stream = generator
+	player.bus = bus_name
 	player.stop()
 	player.play()
 	var playback := player.get_stream_playback() as AudioStreamGeneratorPlayback
@@ -240,6 +307,38 @@ func _play_preset(preset: Dictionary) -> void:
 			sample += randf_range(-noise_amount, noise_amount)
 		sample = clampf(sample * envelope, -0.95, 0.95)
 		playback.push_frame(Vector2(sample, sample))
+
+func _ui_preset(event_name: String) -> Dictionary:
+	var presets := {
+		"hover": {"frequencies": [760.0, 1120.0], "amplitudes": [0.055, 0.025], "duration": 0.10, "sweep": 120.0},
+		"press": {"frequencies": [180.0, 360.0], "amplitudes": [0.10, 0.045], "duration": 0.16, "noise": 0.012},
+		"character_change": {"frequencies": [300.0, 520.0, 780.0], "amplitudes": [0.07, 0.055, 0.035], "duration": 0.28, "sweep": 180.0},
+		"open": {"frequencies": [330.0, 660.0], "amplitudes": [0.07, 0.05], "duration": 0.24, "sweep": 220.0},
+		"close": {"frequencies": [440.0, 220.0], "amplitudes": [0.06, 0.04], "duration": 0.18, "sweep": -120.0},
+		"start_game": {"frequencies": [110.0, 220.0, 440.0], "amplitudes": [0.10, 0.07, 0.045], "duration": 0.58, "sweep": 330.0}
+	}
+	return presets.get(event_name, presets["press"])
+
+func _character_preset(character_id: String) -> Dictionary:
+	var presets := {
+		"lumberjack": {"frequencies": [90.0, 180.0], "amplitudes": [0.16, 0.08], "duration": 0.28, "noise": 0.035, "waveform": "square"},
+		"hunter": {"frequencies": [170.0, 340.0, 680.0], "amplitudes": [0.12, 0.07, 0.035], "duration": 0.30, "noise": 0.025},
+		"engineer": {"frequencies": [440.0, 660.0, 990.0], "amplitudes": [0.07, 0.055, 0.03], "duration": 0.34, "noise": 0.012},
+		"survivor": {"frequencies": [130.0, 260.0, 520.0], "amplitudes": [0.10, 0.07, 0.04], "duration": 0.36, "sweep": 180.0}
+	}
+	return presets.get(character_id, presets["survivor"])
+
+func _game_preset(event_name: String) -> Dictionary:
+	var presets := {
+		"shoot": {"frequencies": [95.0, 190.0, 420.0], "amplitudes": [0.18, 0.10, 0.035], "duration": 0.12, "noise": 0.10, "waveform": "square"},
+		"impact": {"frequencies": [80.0, 160.0], "amplitudes": [0.12, 0.06], "duration": 0.14, "noise": 0.055},
+		"zombie_hit": {"frequencies": [120.0, 240.0], "amplitudes": [0.09, 0.04], "duration": 0.16, "noise": 0.04},
+		"zombie_death": {"frequencies": [180.0, 110.0, 55.0], "amplitudes": [0.12, 0.08, 0.05], "duration": 0.42, "sweep": -100.0, "noise": 0.025},
+		"player_damage": {"frequencies": [70.0, 140.0], "amplitudes": [0.14, 0.07], "duration": 0.24, "noise": 0.06},
+		"wave": {"frequencies": [220.0, 330.0, 495.0], "amplitudes": [0.08, 0.07, 0.06], "duration": 0.55, "sweep": 180.0},
+		"start_game": {"frequencies": [55.0, 110.0, 220.0], "amplitudes": [0.12, 0.08, 0.045], "duration": 0.72, "sweep": 300.0}
+	}
+	return presets.get(event_name, presets["impact"])
 
 func _get_preset(upgrade_id: String, event_name: String, rarity: String) -> Dictionary:
 	if upgrade_id == "rarity":

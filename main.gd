@@ -5,15 +5,13 @@ const WORLD_SIZE := Vector2(1280, 720)
 const PLAYER_SPEED := 310.0
 const UPGRADE_INTERVAL := 25.0
 const MAX_PARTICLES := 180
-const ZOMBIE_SCENE := preload("res://scenes/enemies/zombie.tscn")
-const BESTIARY_SCENE := preload("res://scenes/ui/bestiary.tscn")
 const ENEMY_DATABASE_SCRIPT := preload("res://scripts/enemies/enemy_database.gd")
 const CHARACTER_DATA_SCRIPT := preload("res://scripts/characters/character_data.gd")
 const STORM_EFFECT_SCRIPT := preload("res://scripts/ui/storm_effect.gd")
 const DESTRUCTIBLE_OBJECT_SCRIPT := preload("res://scripts/world/destructible_object.gd")
 const WORLD_ATMOSPHERE_SCRIPT := preload("res://scripts/world/world_atmosphere.gd")
 const VIRTUAL_JOYSTICK_SCRIPT := preload("res://scripts/ui/virtual_joystick.gd")
-const LOADING_ATMOSPHERE_SCRIPT := preload("res://scripts/ui/loading_atmosphere.gd")
+const LOADING_ATMOSPHERE_SCRIPT := preload("res://scripts/ui/loading_screen.gd")
 
 var mode := "menu"
 var player_pos := Vector2(640, 390)
@@ -37,6 +35,8 @@ var road_waypoints: Array[Vector2] = []
 var spawn_serial := 0
 var world_seed := 0
 var zombie_sheet: Texture2D
+var zombie_scene: PackedScene
+var bestiary_scene: PackedScene
 var zombie_animation_sheets: Array[Texture2D] = []
 var survivor_sheet: Texture2D
 var survivor_directional_sheets: Array[Texture2D] = []
@@ -177,8 +177,9 @@ const LOADING_TIPS := [
 func _ready() -> void:
 	# Keep atlas frames pixel-perfect: linear filtering leaks neighboring cells.
 	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	_build_loading_overlay()
 	audio_manager = get_node_or_null("/root/AudioManager")
+	zombie_scene = load("res://scenes/enemies/zombie.tscn") as PackedScene
+	bestiary_scene = load("res://scenes/ui/bestiary.tscn") as PackedScene
 	climate_controller = get_node_or_null("ClimateManager") as ClimateManager
 	if climate_controller != null:
 		climate_config = climate_controller.get_settings()
@@ -198,13 +199,12 @@ func _ready() -> void:
 	records = _load_records()
 	queue_redraw()
 	_build_menu()
-	get_node("MenuLayer").visible = false
 	_build_hud()
 	_build_touch_controls()
 	_build_props()
 	_build_world_parallax()
 	_build_world_camera()
-	bestiary = BESTIARY_SCENE.instantiate()
+	bestiary = bestiary_scene.instantiate() if bestiary_scene != null else null
 	var bestiary_layer := CanvasLayer.new()
 	bestiary_layer.name = "BestiaryLayer"
 	bestiary_layer.layer = 20
@@ -220,7 +220,6 @@ func _ready() -> void:
 	player_sprite.z_index = 5
 	add_child(player_sprite)
 	queue_redraw()
-	call_deferred("_play_boot_loading")
 
 func _process(delta: float) -> void:
 	game_time += delta
@@ -760,6 +759,9 @@ func _select_character(index: int) -> void:
 	if index < 0 or index >= character_data_list.size():
 		return
 	selected_character = index
+	if is_instance_valid(audio_manager):
+		audio_manager.call("play_character_select", str(character_data_list[index].id))
+		audio_manager.call("play_ui_event", "character_change")
 	character_highlight.position = Vector2(260 + index * 160, 325)
 	character_highlight.visible = true
 	_show_selection_panel()
@@ -1003,9 +1005,13 @@ func _show_bestiary() -> void:
 		return
 	bestiary.setup(enemy_data_list, _current_discovered_ids())
 	bestiary.visible = true
+	if is_instance_valid(audio_manager):
+		audio_manager.call("play_ui_event", "open")
 
 func _show_settings() -> void:
 	settings_panel.visible = true
+	if is_instance_valid(audio_manager):
+		audio_manager.call("play_ui_event", "open")
 	_update_controller_status()
 	_update_settings_buttons()
 
@@ -1047,9 +1053,13 @@ func _build_stats_panel(parent: Node) -> void:
 func _show_statistics() -> void:
 	_refresh_leaderboard()
 	stats_panel.visible = true
+	if is_instance_valid(audio_manager):
+		audio_manager.call("play_ui_event", "open")
 
 func _close_statistics() -> void:
 	stats_panel.visible = false
+	if is_instance_valid(audio_manager):
+		audio_manager.call("play_ui_event", "close")
 
 func _build_settings_panel(parent: Node) -> void:
 	settings_panel = ColorRect.new()
@@ -1104,6 +1114,8 @@ func _build_settings_panel(parent: Node) -> void:
 func _close_settings() -> void:
 	rebinding_action = ""
 	settings_panel.visible = false
+	if is_instance_valid(audio_manager):
+		audio_manager.call("play_ui_event", "close")
 
 func _begin_rebind(action_name: String) -> void:
 	rebinding_action = action_name
@@ -1151,6 +1163,8 @@ func _update_controller_status() -> void:
 	settings_controller_status.text = "CONTROLLER: CONECTADO (%d)" % pads.size() if not pads.is_empty() else "CONTROLLER: no detectado"
 
 func _exit_game() -> void:
+	if is_instance_valid(audio_manager):
+		audio_manager.call("play_ui_event", "press")
 	get_tree().quit()
 
 func _refresh_leaderboard() -> void:
@@ -1521,6 +1535,16 @@ func _style_menu_button(button: Button, accent: Color, font_size: int) -> void:
 	button.add_theme_stylebox_override("hover", hover)
 	button.add_theme_stylebox_override("pressed", pressed)
 	button.add_theme_stylebox_override("focus", hover)
+	button.mouse_entered.connect(_on_ui_button_hover)
+	button.pressed.connect(_on_ui_button_pressed)
+
+func _on_ui_button_hover() -> void:
+	if is_instance_valid(audio_manager):
+		audio_manager.call("play_ui_event", "hover")
+
+func _on_ui_button_pressed() -> void:
+	if is_instance_valid(audio_manager):
+		audio_manager.call("play_ui_event", "press")
 
 func _build_props() -> void:
 	_build_city_tilemap()
@@ -1840,6 +1864,9 @@ func _start_game() -> void:
 	_play_scene_transition(Callable(self, "_start_game_after_transition"), "ENTRANDO EN LA NOCHE...")
 
 func _start_game_after_transition() -> void:
+	if is_instance_valid(audio_manager):
+		audio_manager.call("stop_loading_ambience")
+		audio_manager.call("play_game_event", "start_game")
 	if selected_character < 0 or selected_character >= character_data_list.size():
 		selection_message.text = "Selecciona un personaje"
 		selection_message.visible = true
@@ -1981,6 +2008,8 @@ func _shoot() -> void:
 	bullets.append({"pos": player_pos + direction * 24.0, "vel": direction * 820.0 * projectile_speed_multiplier, "life": 0.9, "radius": 8.0 * bullet_size_multiplier})
 	shoot_cooldown = 0.12 / maxf(1.0, fire_rate_multiplier)
 	flash_timer = 0.08
+	if is_instance_valid(audio_manager):
+		audio_manager.call("play_game_event", "shoot")
 
 func _update_bullets(delta: float) -> void:
 	for i in range(bullets.size() - 1, -1, -1):
@@ -1994,6 +2023,8 @@ func _update_bullets(delta: float) -> void:
 				if is_instance_valid(prop_node) and not prop_node.destroyed_state and prop_node.collision_rect().grow(4.0).has_point(bullet["pos"]):
 					prop_node.take_damage(25.0 * score_multiplier)
 					_spawn_burst(bullet["pos"], Color("f0bf6d"), 4)
+					if is_instance_valid(audio_manager):
+						audio_manager.call("play_game_event", "impact")
 					remove = true
 					break
 		if not remove:
@@ -2002,6 +2033,8 @@ func _update_bullets(delta: float) -> void:
 				var zombie_node = zombie.get("node")
 				if is_instance_valid(zombie_node) and not zombie_node.is_dead and bullet["pos"].distance_to(zombie["pos"]) < float(zombie["radius"]) + float(bullet.get("radius", 8.0)):
 					zombie_node.take_damage(25.0 * score_multiplier)
+					if is_instance_valid(audio_manager):
+						audio_manager.call("play_game_event", "zombie_hit")
 					remove = true
 					break
 		if remove:
@@ -2044,6 +2077,8 @@ func _update_zombies(delta: float) -> void:
 			score = maxi(0, score - int(25.0 * attack_multiplier))
 			combo = 0
 			_spawn_burst(player_pos, Color("e0b17a"), 8)
+			if is_instance_valid(audio_manager):
+				audio_manager.call("play_game_event", "player_damage")
 			if lives <= 0:
 				_end_game()
 				return
@@ -2108,6 +2143,8 @@ func _on_zombie_died(zombie_node) -> void:
 		score += value
 		_spawn_burst(pos, Color("bb2938"), 16)
 		_spawn_burst(pos, Color("f0bf6d"), 4)
+		if is_instance_valid(audio_manager):
+			audio_manager.call("play_game_event", "zombie_death")
 		_unlock_enemy_type(int(zombie["type"]))
 		zombies.remove_at(i)
 		return
@@ -2120,6 +2157,8 @@ func _spawn_wave() -> void:
 	for i in range(3 + wave * 2):
 		_spawn_zombie()
 	status_label.text = "OLEADA %d: LA NOCHE EMPEORA" % wave
+	if is_instance_valid(audio_manager):
+		audio_manager.call("play_game_event", "wave")
 
 func _spawn_zombie() -> void:
 	if road_spawn_points.is_empty():
@@ -2130,7 +2169,9 @@ func _spawn_zombie() -> void:
 	var zombie_type := rng.randi_range(0, enemy_data_list.size() - 1)
 	var data = enemy_data_list[zombie_type]
 	var night_bonus := _night_bonus_for_enemy(data)
-	var zombie_node = ZOMBIE_SCENE.instantiate()
+	var zombie_node = zombie_scene.instantiate() if zombie_scene != null else null
+	if zombie_node == null:
+		return
 	zombie_node.setup(data)
 	if night_bonus > 0.0:
 		var night_health := float(data.max_health) * (1.0 + night_bonus)
