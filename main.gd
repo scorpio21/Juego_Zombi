@@ -2602,7 +2602,7 @@ func _end_game() -> void:
 		player_sprite.flip_h = false
 		player_sprite.play("death")
 	_save_record()
-	game_over_label.text = "FIN DE LA NOCHE\nPUNTUACION  %06d\nPulsa R para volver a intentarlo" % score
+	game_over_label.text = "FIN DE LA NOCHE\nPUNTUACION  %06d\nPulsa R para volver al menú" % score
 	game_over_label.visible = true
 	status_label.text = "HAS CAIDO, %s" % username.to_upper()
 	_update_hud()
@@ -2865,7 +2865,9 @@ func _unhandled_input(event: InputEvent) -> void:
 			_save_record()
 		_return_to_menu("Sesion guardada. Elige otro superviviente o vuelve a entrar.")
 	elif event.keycode == KEY_R and mode == "game_over":
-		_return_to_menu("Partida terminada. Escribe un nombre para volver a jugar.")
+		# Desde la pantalla de fin, R siempre devuelve al menú para poder
+		# cambiar nombre o personaje antes de comenzar otra partida.
+		_return_to_menu("Partida terminada. Elige un superviviente para volver a jugar.")
 	elif event.keycode == KEY_R and mode == "playing":
 		_save_record()
 		_start_game()
