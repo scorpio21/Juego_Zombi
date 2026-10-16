@@ -61,6 +61,7 @@ func _ready() -> void:
 	_ensure_bus(MUSIC_BUS, -14.0)
 	_ensure_bus(WORLD_BUS, -1.0)
 	_build_player_pool()
+	_install_web_audio_unlock()
 	set_process(true)
 
 func _process(delta: float) -> void:
@@ -175,11 +176,12 @@ func start_loading_music() -> void:
 		print("[Audio][MUSIC] carga ya estaba reproduciéndose")
 		return
 	var stream := _load_cached_stream(LOADING_MUSIC_PATH)
-	if OS.has_feature("web") and _web_audio_unlocked:
+	if OS.has_feature("web"):
 		_play_web_audio("loading_music", "audio/menu/Cargando.ogg", true, 0.42)
-		if is_instance_valid(_loading_music_player):
-			_loading_music_player.stop()
-		return
+		if _web_audio_unlocked:
+			if is_instance_valid(_loading_music_player):
+				_loading_music_player.stop()
+			return
 	if stream != null:
 		if not is_instance_valid(_loading_music_player):
 			_loading_music_player = AudioStreamPlayer.new()
@@ -234,11 +236,12 @@ func fade_out_loading_music(duration: float = 0.45) -> void:
 func start_menu_music() -> void:
 	print("[Audio][MUSIC] start_menu_music() | path=", MENU_MUSIC_PATH)
 	var stream := _load_cached_stream(MENU_MUSIC_PATH)
-	if OS.has_feature("web") and _web_audio_unlocked:
+	if OS.has_feature("web"):
 		_play_web_audio("menu_music", "audio/menu/Menu_principal.ogg", true, 0.42)
-		if is_instance_valid(_menu_music_player):
-			_menu_music_player.stop()
-		return
+		if _web_audio_unlocked:
+			if is_instance_valid(_menu_music_player):
+				_menu_music_player.stop()
+			return
 	if stream == null:
 		print("[Audio][MUSIC][MISSING] no se pudo cargar ", MENU_MUSIC_PATH)
 		return
@@ -341,6 +344,33 @@ func _unlock_web_audio() -> void:
 	_web_audio_unlocked = true
 	JavaScriptBridge.eval("window.__nocheAudioUnlocked = true;", true)
 	print("[Audio][WEB] audio HTML5 desbloqueado por gesto del usuario")
+	_install_web_audio_unlock()
+
+func _install_web_audio_unlock() -> void:
+	if not OS.has_feature("web"):
+		return
+	JavaScriptBridge.eval("""
+(function(){
+  if (window.__nocheAudioUnlockInstalled) return;
+  window.__nocheAudioUnlockInstalled = true;
+  window.__nocheAudio = window.__nocheAudio || {};
+  window.__nocheUnlockNocheAudio = function(){
+    window.__nocheAudioUnlocked = true;
+    Object.keys(window.__nocheAudio).forEach(function(key){
+      var audio = window.__nocheAudio[key];
+      if (!audio) return;
+      var promise = audio.play();
+      if (promise && promise.catch) promise.catch(function(error){
+        console.warn('[Audio][WEB][BLOCKED]', key, error.name, error.message);
+      });
+    });
+    console.log('[Audio][WEB] gesto nativo detectado; reproductores desbloqueados');
+  };
+  ['pointerdown','touchstart','keydown','click'].forEach(function(name){
+    document.addEventListener(name, window.__nocheUnlockNocheAudio, {capture:true, passive:true});
+  });
+})();
+""", true)
 
 func _play_web_audio(key: String, relative_path: String, loop: bool, volume: float) -> void:
 	if not OS.has_feature("web"):
