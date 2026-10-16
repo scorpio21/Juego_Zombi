@@ -1896,12 +1896,21 @@ func _start_game() -> void:
 		return
 	username = name_input.text.strip_edges()
 	if username.is_empty():
-		username = "Jugador"
-		name_input.text = username
+		selection_message.text = "Escribe tu nombre"
+		selection_message.visible = true
+		name_input.grab_focus()
+		return
 	menu_message.visible = false
 	_play_scene_transition(Callable(self, "_start_game_after_transition"), "ENTRANDO EN LA NOCHE...")
+	# Respaldo para Web y algunos drivers gráficos: si el Tween no entrega
+	# el callback, la partida no puede quedarse bloqueada en el menú.
+	await get_tree().create_timer(1.25).timeout
+	if mode == "menu":
+		_start_game_after_transition()
 
 func _start_game_after_transition() -> void:
+	if mode == "playing":
+		return
 	if is_instance_valid(audio_manager):
 		audio_manager.call("stop_loading_ambience")
 		audio_manager.call("fade_out_menu_music", 0.35)
@@ -1912,14 +1921,19 @@ func _start_game_after_transition() -> void:
 		return
 	username = name_input.text.strip_edges()
 	if username.is_empty():
-		username = "Jugador"
-		name_input.text = username
+		selection_message.text = "Escribe tu nombre"
+		selection_message.visible = true
+		name_input.grab_focus()
+		return
 	menu_message.visible = false
 	var player_stats := _normalize_record(records.get(username, {}))
 	player_stats["plays"] = int(player_stats["plays"]) + 1
 	records[username] = player_stats
 	_write_records()
 	mode = "playing"
+	var menu_layer := get_node_or_null("MenuLayer") as CanvasLayer
+	if menu_layer != null:
+		menu_layer.visible = false
 	touch_move = Vector2.ZERO
 	touch_shoot_pressed = false
 	player_moving = false
@@ -1970,7 +1984,6 @@ func _start_game_after_transition() -> void:
 	particles.clear()
 	hud.visible = true
 	game_over_label.visible = false
-	get_node("MenuLayer").visible = false
 	if world_parallax != null:
 		world_parallax.visible = true
 	if world_camera != null:
