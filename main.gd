@@ -12,6 +12,7 @@ const CHARACTER_DATA_SCRIPT := preload("res://scripts/characters/character_data.
 const STORM_EFFECT_SCRIPT := preload("res://scripts/ui/storm_effect.gd")
 const DESTRUCTIBLE_OBJECT_SCRIPT := preload("res://scripts/world/destructible_object.gd")
 const WORLD_ATMOSPHERE_SCRIPT := preload("res://scripts/world/world_atmosphere.gd")
+const VIRTUAL_JOYSTICK_SCRIPT := preload("res://scripts/ui/virtual_joystick.gd")
 
 var mode := "menu"
 var player_pos := Vector2(640, 390)
@@ -143,6 +144,13 @@ var audio_manager: Node
 var camera_shake_timer := 0.0
 var camera_shake_strength := 0.0
 var upgrade_lightning_flash: ColorRect
+var touch_layer: CanvasLayer
+var touch_root: Control
+var touch_joystick: VirtualJoystick
+var touch_shoot_button: Button
+var touch_reload_button: Button
+var touch_move := Vector2.ZERO
+var touch_shoot_pressed := false
 
 func _ready() -> void:
 	# Keep atlas frames pixel-perfect: linear filtering leaks neighboring cells.
@@ -168,6 +176,7 @@ func _ready() -> void:
 	queue_redraw()
 	_build_menu()
 	_build_hud()
+	_build_touch_controls()
 	_build_props()
 	_build_world_parallax()
 	_build_world_camera()
@@ -198,6 +207,8 @@ func _process(delta: float) -> void:
 	phase_timer = maxf(0.0, phase_timer - delta)
 	shoot_cooldown = maxf(0.0, shoot_cooldown - delta)
 	_update_weather(delta)
+	if touch_root != null:
+		touch_root.visible = mode == "playing" and not upgrade_selecting
 	if mode == "playing":
 		_update_game(delta)
 		_update_player_sprite()
@@ -693,7 +704,12 @@ func _build_character_selection_panel(parent: Node) -> void:
 		bar.stretch_margin_top = 7
 		bar.stretch_margin_right = 8
 		bar.stretch_margin_bottom = 7
-		bar.tint_progress = Color("4de8ce")
+		# The PNG layers carry the metal and worn texture; these tints only
+		# grade them for the UI palette instead of replacing them with a flat fill.
+		bar.tint_under = Color("182b33")
+		bar.tint_progress = Color("42d9c1")
+		bar.tint_over = Color("b4fff0")
+		bar.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 		bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		selection_stats_panel.add_child(bar)
 		selection_stat_bars[stat_name] = bar
@@ -1037,6 +1053,90 @@ func _build_hud() -> void:
 	game_over_label.visible = false
 	_build_upgrade_panel()
 	hud.visible = false
+
+func _build_touch_controls() -> void:
+	touch_layer = CanvasLayer.new()
+	touch_layer.name = "TouchControlsLayer"
+	touch_layer.layer = 30
+	add_child(touch_layer)
+	touch_root = Control.new()
+	touch_root.name = "TouchControls"
+	touch_root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	touch_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	touch_layer.add_child(touch_root)
+
+	touch_joystick = VIRTUAL_JOYSTICK_SCRIPT.new()
+	touch_joystick.name = "MoveJoystick"
+	touch_joystick.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
+	touch_joystick.offset_left = 34.0
+	touch_joystick.offset_top = -214.0
+	touch_joystick.offset_right = 214.0
+	touch_joystick.offset_bottom = -34.0
+	touch_joystick.vector_changed.connect(_on_touch_move_changed)
+	touch_root.add_child(touch_joystick)
+
+	touch_shoot_button = _create_touch_button("DISPARAR", Color("e85b63"))
+	touch_shoot_button.name = "ShootButton"
+	touch_shoot_button.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+	touch_shoot_button.offset_left = -214.0
+	touch_shoot_button.offset_top = -214.0
+	touch_shoot_button.offset_right = -34.0
+	touch_shoot_button.offset_bottom = -34.0
+	touch_shoot_button.button_down.connect(_on_touch_shoot_down)
+	touch_shoot_button.button_up.connect(_on_touch_shoot_up)
+	touch_root.add_child(touch_shoot_button)
+
+	touch_reload_button = _create_touch_button("RECARGAR", Color("f0bf6d"))
+	touch_reload_button.name = "ReloadButton"
+	touch_reload_button.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+	touch_reload_button.offset_left = -164.0
+	touch_reload_button.offset_top = -124.0
+	touch_reload_button.offset_right = -34.0
+	touch_reload_button.offset_bottom = -74.0
+	touch_reload_button.pressed.connect(_on_touch_reload)
+	touch_root.add_child(touch_reload_button)
+	touch_root.visible = false
+
+func _create_touch_button(text: String, accent: Color) -> Button:
+	var button := Button.new()
+	button.text = text
+	button.focus_mode = Control.FOCUS_NONE
+	button.mouse_filter = Control.MOUSE_FILTER_STOP
+	button.add_theme_font_size_override("font_size", 13)
+	button.add_theme_color_override("font_color", Color("e8f5ef"))
+	button.add_theme_color_override("font_hover_color", Color.WHITE)
+	button.add_theme_color_override("font_pressed_color", Color.WHITE)
+	var normal := StyleBoxFlat.new()
+	normal.bg_color = Color(0.025, 0.10, 0.13, 0.86)
+	normal.border_color = Color(accent.r, accent.g, accent.b, 0.78)
+	normal.set_border_width_all(2)
+	normal.set_corner_radius_all(14)
+	normal.shadow_color = Color(0.0, 0.0, 0.0, 0.38)
+	normal.shadow_size = 8
+	var pressed := normal.duplicate() as StyleBoxFlat
+	pressed.bg_color = Color(accent.r, accent.g, accent.b, 0.38)
+	pressed.border_color = Color(accent.r, accent.g, accent.b, 1.0)
+	button.add_theme_stylebox_override("normal", normal)
+	button.add_theme_stylebox_override("hover", pressed)
+	button.add_theme_stylebox_override("pressed", pressed)
+	button.add_theme_stylebox_override("focus", normal)
+	return button
+
+func _on_touch_move_changed(value: Vector2) -> void:
+	touch_move = value
+
+func _on_touch_shoot_down() -> void:
+	touch_shoot_pressed = true
+
+func _on_touch_shoot_up() -> void:
+	touch_shoot_pressed = false
+
+func _on_touch_reload() -> void:
+	# There is no finite magazine in the current weapon model. Resetting the
+	# cooldown makes the button useful now and keeps it ready for ammunition.
+	shoot_cooldown = 0.0
+	if status_label != null and mode == "playing":
+		status_label.text = "ARMA LISTA"
 
 func _build_upgrade_panel() -> void:
 	upgrade_overlay = ColorRect.new()
@@ -1501,7 +1601,7 @@ func _update_player_sprite() -> void:
 	player_sprite.position = player_pos
 	var suffix := _direction_animation_suffix()
 	var animation_name := "idle_" + suffix
-	if Input.is_action_pressed("shoot"):
+	if Input.is_action_pressed("shoot") or touch_shoot_pressed:
 		animation_name = "attack_" + suffix
 	elif player_moving:
 		animation_name = ("run_" + suffix) if Input.is_key_pressed(KEY_SHIFT) else ("walk_" + suffix)
@@ -1535,6 +1635,8 @@ func _start_game() -> void:
 	records[username] = player_stats
 	_write_records()
 	mode = "playing"
+	touch_move = Vector2.ZERO
+	touch_shoot_pressed = false
 	player_moving = false
 	player_facing = Vector2.DOWN
 	player_dead = false
@@ -1599,6 +1701,8 @@ func _update_game(delta: float) -> void:
 	if player_dead:
 		return
 	var movement := Input.get_vector("move_left", "move_right", "move_up", "move_down")
+	if touch_move.length_squared() > 0.01:
+		movement = touch_move
 	player_moving = movement.length_squared() > 0.01
 	if player_moving:
 		player_facing = movement.normalized()
@@ -1608,9 +1712,12 @@ func _update_game(delta: float) -> void:
 	player_pos.y = clampf(player_pos.y, 126.0, 690.0)
 	if world_camera != null and world_camera.enabled:
 		world_camera.position = player_pos
-	var mouse_position := get_global_mouse_position()
-	aim_pos = player_pos + (mouse_position - player_pos) * mouse_sensitivity
-	if Input.is_action_just_pressed("shoot"):
+	if touch_shoot_pressed:
+		aim_pos = _get_touch_aim_position()
+	else:
+		var mouse_position := get_global_mouse_position()
+		aim_pos = player_pos + (mouse_position - player_pos) * mouse_sensitivity
+	if Input.is_action_just_pressed("shoot") or touch_shoot_pressed:
 		_shoot()
 	_update_bullets(delta)
 	_update_zombies(delta)
@@ -1632,6 +1739,17 @@ func _update_game(delta: float) -> void:
 		_build_props()
 		_spawn_wave()
 	_update_hud()
+
+func _get_touch_aim_position() -> Vector2:
+	var closest_position := player_pos + player_facing * 100.0
+	var closest_distance := INF
+	for zombie in zombies:
+		var zombie_position: Vector2 = zombie.get("pos", closest_position)
+		var distance := player_pos.distance_squared_to(zombie_position)
+		if distance < closest_distance:
+			closest_distance = distance
+			closest_position = zombie_position
+	return closest_position
 
 func _shoot() -> void:
 	if shoot_cooldown > 0.0:
@@ -2382,6 +2500,8 @@ func _write_records() -> void:
 
 func _return_to_menu(message: String) -> void:
 	mode = "menu"
+	touch_move = Vector2.ZERO
+	touch_shoot_pressed = false
 	player_dead = false
 	if player_sprite != null:
 		player_sprite.stop()
