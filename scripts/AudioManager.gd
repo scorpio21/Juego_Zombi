@@ -355,9 +355,11 @@ func _install_web_audio_unlock() -> void:
   window.__nocheAudio = window.__nocheAudio || {};
   window.__nocheUnlockNocheAudio = function(){
     window.__nocheAudioUnlocked = true;
+    window.__nocheAudioStopped = window.__nocheAudioStopped || {};
     Object.keys(window.__nocheAudio).forEach(function(key){
       var audio = window.__nocheAudio[key];
       if (!audio) return;
+      if (window.__nocheAudioStopped[key]) return;
       // Solo reanudar bucles o audios bloqueados que aún no han terminado.
       // No reiniciar voces ya finalizadas al disparar o tocar la pantalla.
       if (audio.loop || !audio.ended) {
@@ -386,6 +388,8 @@ func _play_web_audio(key: String, relative_path: String, loop: bool, volume: flo
   window.__nocheAudio = window.__nocheAudio || {};
   var key = %s;
   var path = %s;
+  window.__nocheAudioStopped = window.__nocheAudioStopped || {};
+  window.__nocheAudioStopped[key] = false;
   var audio = window.__nocheAudio[key];
   if (!audio) {
     audio = new Audio(path);
@@ -407,7 +411,7 @@ func _stop_web_audio(key: String) -> void:
 	if not OS.has_feature("web"):
 		return
 	var key_json := JSON.stringify(key)
-	JavaScriptBridge.eval("(function(){var a=window.__nocheAudio&&window.__nocheAudio[%s];if(a){a.pause();a.currentTime=0;}})();" % key_json, true)
+	JavaScriptBridge.eval("(function(){window.__nocheAudioStopped=window.__nocheAudioStopped||{};window.__nocheAudioStopped[%s]=true;var a=window.__nocheAudio&&window.__nocheAudio[%s];if(a){a.pause();a.currentTime=0;}})();" % [key_json, key_json], true)
 
 func play_game_event(event_name: String) -> void:
 	_play_preset(_game_preset(event_name), WORLD_BUS)
