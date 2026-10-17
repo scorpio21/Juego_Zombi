@@ -160,6 +160,7 @@ var touch_root: Control
 var touch_joystick: Control
 var touch_shoot_button: Button
 var touch_reload_button: Button
+var touch_menu_button: Button
 var touch_move := Vector2.ZERO
 var touch_shoot_pressed := false
 var loading_layer: CanvasLayer
@@ -299,6 +300,15 @@ func _layout_touch_controls(viewport_size: Vector2) -> void:
 	touch_reload_button.offset_top = -(control_size + bottom_margin + reload_height + 14.0)
 	touch_reload_button.offset_right = -right_margin
 	touch_reload_button.offset_bottom = -(control_size + bottom_margin + 14.0)
+	if is_instance_valid(touch_menu_button):
+		var menu_width := clampf(viewport_size.x * 0.28, 220.0, 360.0)
+		var menu_height := clampf(viewport_size.y * 0.075, 48.0, 68.0)
+		var menu_gap := clampf(viewport_size.y * 0.06, 42.0, 76.0)
+		touch_menu_button.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+		touch_menu_button.offset_left = -menu_width * 0.5
+		touch_menu_button.offset_top = -(menu_height + menu_gap)
+		touch_menu_button.offset_right = menu_width * 0.5
+		touch_menu_button.offset_bottom = -menu_gap
 
 func _process(delta: float) -> void:
 	game_time += delta
@@ -325,7 +335,16 @@ func _process(delta: float) -> void:
 			_update_hud()
 	_update_weather(delta)
 	if touch_root != null:
-		touch_root.visible = _touch_controls_available() and mode == "playing" and not upgrade_selecting
+		var touch_available := _touch_controls_available()
+		touch_root.visible = touch_available and mode in ["playing", "game_over"] and not upgrade_selecting
+		if is_instance_valid(touch_joystick):
+			touch_joystick.visible = touch_available and mode == "playing" and not upgrade_selecting
+		if is_instance_valid(touch_shoot_button):
+			touch_shoot_button.visible = touch_available and mode == "playing" and not upgrade_selecting
+		if is_instance_valid(touch_reload_button):
+			touch_reload_button.visible = touch_available and mode == "playing" and not upgrade_selecting
+		if is_instance_valid(touch_menu_button):
+			touch_menu_button.visible = _web_mobile_controls_available() and mode == "game_over"
 	if mode == "playing":
 		_update_game(delta)
 		_update_player_sprite()
@@ -387,6 +406,11 @@ func _touch_controls_available() -> bool:
 	# En Windows/Linux/macOS el juego se controla con teclado y ratón. En Web,
 	# DisplayServer detecta correctamente los móviles con pantalla táctil.
 	return OS.has_feature("mobile") or DisplayServer.is_touchscreen_available()
+
+func _web_mobile_controls_available() -> bool:
+	# El retorno táctil de game over es exclusivo de Web móvil: en escritorio
+	# conservamos el flujo de teclado (F/Esc) sin añadir botones al HUD.
+	return OS.has_feature("web") and DisplayServer.is_touchscreen_available()
 
 func _weather_profile(weather_name: String) -> Dictionary:
 	match weather_name:
@@ -1484,6 +1508,11 @@ func _build_touch_controls() -> void:
 	touch_reload_button.offset_bottom = -225.0
 	touch_reload_button.pressed.connect(_on_touch_reload)
 	touch_root.add_child(touch_reload_button)
+
+	touch_menu_button = _create_touch_button("VOLVER AL MENU", Color("65e6c4"))
+	touch_menu_button.name = "MenuButton"
+	touch_menu_button.pressed.connect(_on_touch_menu_pressed)
+	touch_root.add_child(touch_menu_button)
 	touch_root.visible = false
 	_layout_touch_controls(get_viewport_rect().size)
 
@@ -1523,6 +1552,13 @@ func _on_touch_shoot_up() -> void:
 
 func _on_touch_reload() -> void:
 	_reload_weapon()
+
+func _on_touch_menu_pressed() -> void:
+	if mode not in ["playing", "upgrade", "game_over"]:
+		return
+	if not username.is_empty():
+		_save_record()
+	_return_to_menu("Sesion guardada. Elige otro superviviente o vuelve a entrar.")
 
 func _reload_weapon() -> void:
 	if mode != "playing" or weapon_reloading or ammo_in_magazine >= MAGAZINE_SIZE:
@@ -2758,7 +2794,7 @@ func _end_game() -> void:
 		player_sprite.flip_h = false
 		player_sprite.play("death")
 	_save_record()
-	game_over_label.text = "FIN DE LA NOCHE\nPUNTUACION  %06d\nPulsa F para volver al menú" % score
+	game_over_label.text = "FIN DE LA NOCHE\nPUNTUACION  %06d\nPulsa F o VOLVER AL MENU" % score
 	game_over_label.visible = true
 	status_label.text = "HAS CAIDO, %s" % username.to_upper()
 	_update_hud()

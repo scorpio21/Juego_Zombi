@@ -2,18 +2,23 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="theme-color" content="#02070b">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Noche de los Infectados">
     <title>$GODOT_PROJECT_NAME</title>
     $GODOT_HEAD_INCLUDE
     <style>
         :root { color-scheme: dark; }
-        html, body, #canvas { width: 100%; height: 100%; margin: 0; padding: 0; border: 0; }
-        body { overflow: hidden; background: #02070b url('loading-backdrop.png') center/cover no-repeat; touch-action: none; }
-        #canvas { display: block; outline: none; }
+        html, body { width: 100%; height: 100%; min-height: 100%; margin: 0; padding: 0; border: 0; overflow: hidden; }
+        body { min-height: 100dvh; background: #02070b url('loading-backdrop.png') center/cover no-repeat; touch-action: none; }
+        #canvas { position: fixed; inset: 0; display: block; width: 100vw !important; height: 100dvh !important; min-width: 100%; min-height: 100%; outline: none; }
         #boot-loader {
             position: fixed; inset: 0; z-index: 10; display: grid; place-items: center;
             background: linear-gradient(180deg, rgba(1,8,14,.74), rgba(1,5,9,.91)), url('loading-backdrop.png') center/cover no-repeat;
-            opacity: 1; transition: opacity .65s ease; pointer-events: none;
+            opacity: 1; transition: opacity .65s ease; pointer-events: none; min-height: 100dvh;
         }
         #boot-loader.is-hidden { opacity: 0; }
         #boot-content { width: min(720px, 76vw); text-align: center; }
@@ -25,6 +30,15 @@
         #boot-progress::-moz-progress-bar { background: linear-gradient(90deg,#0879c9,#37e1ff); box-shadow: 0 0 12px #22c7ff; }
         #boot-percent { display: block; margin-top: .7rem; color: #8de8d0; font: 600 .9rem Arial,sans-serif; }
         #boot-notice { margin-top: 1rem; color: #ff9a9a; font: 500 .9rem Arial,sans-serif; white-space: pre-line; }
+        #fullscreen-button {
+            position: fixed; z-index: 20; top: max(14px, env(safe-area-inset-top)); right: max(14px, env(safe-area-inset-right));
+            display: none; padding: .7rem .9rem; border: 1px solid rgba(110, 231, 213, .75); border-radius: .55rem;
+            color: #dff8ff; background: rgba(2, 16, 23, .82); box-shadow: 0 0 18px rgba(34, 199, 255, .22);
+            font: 700 .72rem Arial, sans-serif; letter-spacing: .06em; touch-action: manipulation;
+        }
+        #fullscreen-button.is-visible { display: block; }
+        #fullscreen-help { position: fixed; z-index: 20; left: 50%; bottom: max(18px, env(safe-area-inset-bottom)); transform: translateX(-50%); display: none; width: min(88vw, 520px); padding: .7rem 1rem; color: #d5e7e8; background: rgba(2, 10, 15, .9); border: 1px solid rgba(110, 231, 213, .45); border-radius: .5rem; text-align: center; font: 500 .78rem Arial, sans-serif; }
+        #fullscreen-help.is-visible { display: block; }
     </style>
 </head>
 <body>
@@ -38,6 +52,8 @@
             <div id="boot-notice"></div>
         </div>
     </div>
+    <button id="fullscreen-button" type="button" aria-label="Abrir pantalla completa">PANTALLA COMPLETA</button>
+    <div id="fullscreen-help" role="status"></div>
     <audio id="boot-music" preload="auto" loop src="audio/menu/Cargando.ogg"></audio>
     <script src="$GODOT_URL"></script>
     <script>
@@ -48,7 +64,15 @@
         const percent = document.getElementById('boot-percent');
         const notice = document.getElementById('boot-notice');
         const music = document.getElementById('boot-music');
+        const fullscreenButton = document.getElementById('fullscreen-button');
+        const fullscreenHelp = document.getElementById('fullscreen-help');
         let audioUnlocked = false;
+        let fullscreenRequested = false;
+
+        const mobileBrowser = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || navigator.maxTouchPoints > 0;
+        if (mobileBrowser && !window.matchMedia('(display-mode: standalone)').matches) {
+            fullscreenButton.classList.add('is-visible');
+        }
 
         function tryStartMusic() {
             if (audioUnlocked) return;
@@ -57,8 +81,44 @@
             const promise = music.play();
             if (promise && promise.catch) promise.catch(() => { audioUnlocked = false; });
         }
+        async function requestGameFullscreen() {
+            if (fullscreenRequested || document.fullscreenElement) return;
+            fullscreenRequested = true;
+            try {
+                if (document.documentElement.requestFullscreen) {
+                    await document.documentElement.requestFullscreen({navigationUI: 'hide'});
+                } else if (document.documentElement.webkitRequestFullscreen) {
+                    document.documentElement.webkitRequestFullscreen();
+                } else {
+                    throw new Error('fullscreen-api-unavailable');
+                }
+                if (screen.orientation && screen.orientation.lock) {
+                    await screen.orientation.lock('landscape').catch(() => {});
+                }
+                fullscreenButton.classList.remove('is-visible');
+                fullscreenHelp.classList.remove('is-visible');
+            } catch (error) {
+                fullscreenRequested = false;
+                // iOS Safari does not expose document fullscreen. Standalone
+                // mode (Add to Home Screen) is the supported equivalent.
+                if (/iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+                    fullscreenHelp.textContent = 'En iPhone: pulsa Compartir y selecciona «Añadir a pantalla de inicio» para jugar sin la barra del navegador.';
+                    fullscreenHelp.classList.add('is-visible');
+                    setTimeout(() => fullscreenHelp.classList.remove('is-visible'), 7000);
+                } else {
+                    console.info('[Web] Pantalla completa no disponible', error);
+                }
+            }
+        }
+        fullscreenButton.addEventListener('click', requestGameFullscreen);
         ['pointerdown', 'touchstart', 'keydown', 'click'].forEach((eventName) => {
             document.addEventListener(eventName, tryStartMusic, {capture: true, passive: true});
+        });
+        document.addEventListener('pointerdown', () => {
+            if (mobileBrowser) requestGameFullscreen();
+        }, {capture: true, passive: true, once: true});
+        document.addEventListener('fullscreenchange', () => {
+            if (document.fullscreenElement) fullscreenButton.classList.remove('is-visible');
         });
         tryStartMusic();
 
