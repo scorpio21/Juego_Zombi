@@ -2044,9 +2044,8 @@ func _configure_player_sprite() -> void:
 	player_sprite.animation = "idle_down"
 	player_sprite.frame = 0
 	player_sprite.flip_h = false
-	# El jugador se renderiza en _draw_player() para evitar duplicar el sprite
-	# con el dibujo de respaldo, especialmente en la exportación Web.
-	player_sprite.visible = false
+	player_sprite.visible = true
+	player_sprite.play("idle_down")
 
 func _update_player_sprite() -> void:
 	if player_sprite == null or player_dead:
@@ -2820,7 +2819,7 @@ func _draw() -> void:
 		if weather == "niebla" and zombie["pos"].distance_to(player_pos) > 420.0:
 			continue
 		_draw_zombie(zombie)
-	_draw_player()
+	draw_circle(player_pos + Vector2(0, 28), 24, Color(0.0, 0.0, 0.0, 0.32))
 	for particle in particles:
 		var alpha: float = clampf(float(particle["life"]) * 1.5, 0.0, 1.0)
 		var color: Color = particle["color"]
