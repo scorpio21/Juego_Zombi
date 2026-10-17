@@ -870,6 +870,8 @@ func _build_menu() -> void:
 	bestiary_button.position = Vector2(825, 626)
 	bestiary_button.size = Vector2(150, 46)
 	bestiary_button.text = "BESTIARIO"
+	bestiary_button.mouse_filter = Control.MOUSE_FILTER_STOP
+	bestiary_button.z_index = 20
 	_style_menu_button(bestiary_button, Color("6d8e9a"), 13)
 	bestiary_button.pressed.connect(_show_bestiary)
 	layer.add_child(bestiary_button)
@@ -1024,6 +1026,7 @@ func _build_character_selection_panel(parent: Node) -> void:
 	panel_style.shadow_color = Color(0.0, 0.0, 0.0, 0.52)
 	panel_style.shadow_size = 12
 	selection_stats_panel.add_theme_stylebox_override("panel", panel_style)
+	selection_stats_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	parent.add_child(selection_stats_panel)
 	selection_stats_panel.visible = false
 	var heading := _label(selection_stats_panel, "PERFIL DEL SUPERVIVIENTE", Vector2(18, 12), 12, Color("65e6c4"))
@@ -2809,7 +2812,7 @@ func _draw() -> void:
 		if weather == "niebla" and zombie["pos"].distance_to(player_pos) > 420.0:
 			continue
 		_draw_zombie(zombie)
-	draw_circle(player_pos + Vector2(0, 28), 24, Color(0.0, 0.0, 0.0, 0.32))
+	_draw_player()
 	for particle in particles:
 		var alpha: float = clampf(float(particle["life"]) * 1.5, 0.0, 1.0)
 		var color: Color = particle["color"]
