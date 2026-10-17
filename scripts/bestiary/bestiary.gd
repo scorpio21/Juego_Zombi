@@ -149,7 +149,7 @@ func _on_scroll_gui_input(event: InputEvent) -> void:
 		touch_last_position = event.position
 		accept_event()
 	elif event is InputEventScreenDrag and touch_dragging:
-		var delta_y := event.position.y - touch_last_position.y
+		var delta_y: float = event.position.y - touch_last_position.y
 		touch_last_position = event.position
 		var max_scroll := maxi(0, list_container.size.y - scroll.size.y)
 		scroll.scroll_vertical = clampi(scroll.scroll_vertical - int(delta_y), 0, max_scroll)
