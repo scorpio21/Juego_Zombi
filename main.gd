@@ -435,6 +435,12 @@ func _weather_profile(weather_name: String) -> Dictionary:
 			return {"darkness": 0.06, "visibility": 0.92, "rain": 0.0, "fog": 0.05}
 		"noche":
 			return {"darkness": 0.48, "visibility": 0.66, "rain": 0.10, "fog": 0.20}
+		"luna_roja":
+			return {"darkness": 0.42, "visibility": 0.58, "rain": 0.0, "fog": 0.18}
+		"ceniza_toxica":
+			return {"darkness": 0.34, "visibility": 0.46, "rain": 0.0, "fog": 0.88}
+		"ola_calor":
+			return {"darkness": 0.08, "visibility": 0.88, "rain": 0.0, "fog": 0.03}
 	return {"darkness": 0.0, "visibility": 1.0, "rain": 0.0, "fog": 0.0}
 
 func _climate_enabled() -> bool:
@@ -508,7 +514,7 @@ func _set_weather(next_weather: String, announce: bool = true) -> void:
 	weather_tween.tween_property(self, "weather_rain_strength", rain_target, transition_time)
 	weather_tween.tween_property(self, "weather_fog_strength", fog_target, transition_time)
 	if announce and mode == "playing":
-		var weather_names := {"soleado": "SOLEADO", "nublado": "NUBLADO", "lluvia": "LLUVIA", "tormenta": "TORMENTA", "niebla": "NIEBLA", "noche": "NOCHE"}
+		var weather_names := {"soleado": "SOLEADO", "nublado": "NUBLADO", "lluvia": "LLUVIA", "tormenta": "TORMENTA", "niebla": "NIEBLA", "viento": "VIENTO", "noche": "NOCHE", "luna_roja": "LUNA ROJA", "ceniza_toxica": "CENIZA TÓXICA", "ola_calor": "OLA DE CALOR"}
 		status_label.text = "CLIMA: %s" % str(weather_names.get(next_weather, next_weather.to_upper()))
 		if next_weather == "noche":
 			status_label.text = "Ha caído la noche. Los infectados son más peligrosos."
@@ -536,7 +542,10 @@ func _roll_weather() -> String:
 		"lluvia": climate_config.rain_probability if climate_config != null else 0.28,
 		"tormenta": climate_config.storm_probability if climate_config != null else 0.12,
 		"niebla": climate_config.fog_probability if climate_config != null else 0.18,
-		"viento": climate_config.wind_probability if climate_config != null else 0.16
+		"viento": climate_config.wind_probability if climate_config != null else 0.16,
+		"luna_roja": climate_config.red_moon_probability if climate_config != null else 0.04,
+		"ceniza_toxica": climate_config.toxic_ash_probability if climate_config != null else 0.03,
+		"ola_calor": climate_config.heat_wave_probability if climate_config != null else 0.05
 	}
 	weights.erase(weather)
 	var total := 0.0
@@ -611,6 +620,8 @@ func _weather_player_speed() -> float:
 		return 0.93
 	if weather == "viento":
 		return 0.97
+	if weather == "ola_calor":
+		return 0.90
 	return 1.0
 
 func _weather_zombie_speed() -> float:
@@ -620,10 +631,16 @@ func _weather_zombie_speed() -> float:
 		return 0.95
 	if weather == "noche":
 		return 1.02
+	if weather == "luna_roja":
+		return 1.08
+	if weather == "ceniza_toxica":
+		return 0.98
+	if weather == "ola_calor":
+		return 0.95
 	return 1.0
 
 func _night_bonus_for_enemy(data: Resource) -> float:
-	if weather != "noche":
+	if weather not in ["noche", "luna_roja"]:
 		return 0.0
 	var enemy_id := str(data.id)
 	var base_bonus := climate_config.night_zombie_bonus if climate_config != null else 0.01
@@ -633,7 +650,7 @@ func _night_bonus_for_enemy(data: Resource) -> float:
 		return base_bonus * 3.0
 	if str(data.rarity).to_lower().contains("épico") or enemy_id == "mutant" or enemy_id == "armored":
 		return base_bonus * 4.0
-	return base_bonus
+	return base_bonus * 1.35 if weather == "luna_roja" else base_bonus
 
 func _build_loading_overlay() -> void:
 	loading_layer = CanvasLayer.new()
@@ -2529,6 +2546,10 @@ func _spawn_climate_resources() -> void:
 			count = maxi(1, int(round(climate_config.fog_supply_multiplier if climate_config != null else 1.35)))
 	elif weather == "tormenta":
 		count = maxi(1, int(round(climate_config.storm_material_multiplier if climate_config != null else 1.50)))
+	elif weather == "ola_calor":
+		count = 1
+	elif weather == "ceniza_toxica":
+		count = maxi(1, int(round(climate_config.fog_supply_multiplier if climate_config != null else 1.35)))
 	count = mini(count, 3)
 	for i in range(count):
 		var resource_kind := "suministros"
@@ -2536,6 +2557,10 @@ func _spawn_climate_resources() -> void:
 			resource_kind = "agua"
 		elif weather == "tormenta":
 			resource_kind = "materiales"
+		elif weather == "ola_calor":
+			resource_kind = "agua"
+		elif weather == "ceniza_toxica":
+			resource_kind = "suministros"
 		var point_index := rng.randi_range(0, road_spawn_points.size() - 1)
 		var drop_position: Vector2 = road_spawn_points[point_index] + Vector2(rng.randf_range(-45.0, 45.0), rng.randf_range(-30.0, 30.0))
 		resource_drops.append({"pos": drop_position, "kind": resource_kind, "pulse": rng.randf_range(0.0, TAU)})
@@ -3015,6 +3040,19 @@ func _draw_weather_effects() -> void:
 			var wind_x := fmod(float(i * 93) + game_time * 260.0, WORLD_SIZE.x + 180.0) - 90.0
 			var wind_y := 150.0 + float((i * 67) % 480)
 			draw_line(Vector2(wind_x, wind_y), Vector2(wind_x + 34.0, wind_y - 5.0), Color(0.70, 0.84, 0.86, 0.11), 1.5)
+	if weather == "luna_roja":
+		draw_circle(Vector2(1080.0, 112.0), 74.0, Color(0.64, 0.08, 0.10, 0.12))
+		draw_circle(Vector2(1080.0, 112.0), 54.0, Color(0.88, 0.18, 0.12, 0.20))
+	if weather == "ceniza_toxica":
+		for i in range(42):
+			var ash_x := fmod(float(i * 71) + game_time * (18.0 + float(i % 5)), WORLD_SIZE.x)
+			var ash_y := fmod(float(i * 43) + game_time * (26.0 + float(i % 7)), WORLD_SIZE.y)
+			draw_circle(Vector2(ash_x, ash_y), 1.5 + float(i % 3), Color(0.55, 0.62, 0.57, 0.22))
+	if weather == "ola_calor":
+		for i in range(8):
+			var heat_x := 120.0 + float(i * 155)
+			var heat_y := 190.0 + sin(game_time * 1.2 + i) * 8.0
+			draw_line(Vector2(heat_x, heat_y), Vector2(heat_x + 42.0, heat_y + 2.0), Color(1.0, 0.64, 0.30, 0.08), 2.0)
 	if weather_lightning_strength > 0.0:
 		draw_rect(Rect2(Vector2.ZERO, WORLD_SIZE), Color(0.68, 0.86, 1.0, weather_lightning_strength * 0.16))
 	if lightning_wave_alpha > 0.0:

@@ -14,6 +14,9 @@ extends Resource
 @export_range(0.0, 1.0, 0.01) var fog_probability: float = 0.18 ## Probabilidad relativa de niebla.
 @export_range(0.0, 1.0, 0.01) var storm_probability: float = 0.12 ## Probabilidad relativa de tormenta.
 @export_range(0.0, 1.0, 0.01) var wind_probability: float = 0.16 ## Probabilidad relativa de viento.
+@export_range(0.0, 1.0, 0.01) var red_moon_probability: float = 0.04 ## Probabilidad relativa de luna roja.
+@export_range(0.0, 1.0, 0.01) var toxic_ash_probability: float = 0.03 ## Probabilidad relativa de ceniza tóxica.
+@export_range(0.0, 1.0, 0.01) var heat_wave_probability: float = 0.05 ## Probabilidad relativa de ola de calor.
 
 @export_category("Intensidad visual")
 @export_range(0.0, 2.0, 0.01) var rain_intensity: float = 1.0 ## Multiplicador visual de lluvia.

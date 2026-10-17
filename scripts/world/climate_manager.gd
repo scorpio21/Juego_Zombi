@@ -62,6 +62,8 @@ func set_weather_audio(climate_name: String, fade_seconds: float = -1.0) -> void
 	if not weather_audio_enabled or _weather_audio_players.is_empty():
 		return
 	var normalized := climate_name.to_lower()
+	var audio_aliases := {"luna_roja": "noche", "ceniza_toxica": "niebla", "ola_calor": "viento"}
+	normalized = str(audio_aliases.get(normalized, normalized))
 	if normalized in ["soleado", "nublado", "amanecer", "mañana", "tarde", "atardecer"]:
 		normalized = ""
 	if normalized == _current_audio_weather:
