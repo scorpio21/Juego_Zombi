@@ -1193,9 +1193,15 @@ func _build_selection_preview_frames(texture: Texture2D) -> SpriteFrames:
 
 func _show_bestiary() -> void:
 	if bestiary == null:
+		push_warning("[Bestiary] No se pudo instanciar la escena del Bestiario.")
 		return
-	bestiary.setup(enemy_data_list, _current_discovered_ids())
+	if bestiary_layer != null:
+		bestiary_layer.visible = true
+		bestiary_layer.show()
 	bestiary.visible = true
+	bestiary.show()
+	bestiary.setup(enemy_data_list, _current_discovered_ids())
+	bestiary.queue_redraw()
 	if is_instance_valid(audio_manager):
 		audio_manager.call("play_ui_event", "open")
 
