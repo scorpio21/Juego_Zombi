@@ -2044,7 +2044,9 @@ func _configure_player_sprite() -> void:
 	player_sprite.animation = "idle_down"
 	player_sprite.frame = 0
 	player_sprite.flip_h = false
-	player_sprite.visible = true
+	# El jugador se renderiza en _draw_player() para evitar duplicar el sprite
+	# con el dibujo de respaldo, especialmente en la exportación Web.
+	player_sprite.visible = false
 
 func _update_player_sprite() -> void:
 	if player_sprite == null or player_dead:
