@@ -13,6 +13,7 @@ extends Resource
 @export_range(0.0, 1.0, 0.01) var rain_probability: float = 0.28 ## Probabilidad relativa de lluvia.
 @export_range(0.0, 1.0, 0.01) var fog_probability: float = 0.18 ## Probabilidad relativa de niebla.
 @export_range(0.0, 1.0, 0.01) var storm_probability: float = 0.12 ## Probabilidad relativa de tormenta.
+@export_range(0.0, 1.0, 0.01) var wind_probability: float = 0.16 ## Probabilidad relativa de viento.
 
 @export_category("Intensidad visual")
 @export_range(0.0, 2.0, 0.01) var rain_intensity: float = 1.0 ## Multiplicador visual de lluvia.
@@ -21,6 +22,11 @@ extends Resource
 
 @export_category("Dificultad nocturna")
 @export_range(0.0, 0.25, 0.001) var night_zombie_bonus: float = 0.01 ## Bonificación base de vida/daño nocturna.
+
+@export_category("Impacto en recursos")
+@export_range(0.5, 3.0, 0.05) var rain_resource_multiplier: float = 1.25 ## Más suministros de agua con lluvia.
+@export_range(0.5, 3.0, 0.05) var fog_supply_multiplier: float = 1.35 ## Más suministros abandonados con niebla.
+@export_range(0.5, 3.0, 0.05) var storm_material_multiplier: float = 1.50 ## Más materiales tras una tormenta.
 
 @export_category("Transiciones")
 @export_range(0.1, 10.0, 0.1, "suffix:s") var climate_transition_speed: float = 1.8 ## Duración del fundido entre climas.

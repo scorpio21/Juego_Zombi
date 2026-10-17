@@ -96,6 +96,14 @@ var weather_lightning_strength := 0.0
 var weather_lightning_timer := 0.0
 var weather_change_timer := 0.0
 var weather_tween: Tween
+var day_phase := "amanecer"
+var day_phase_index := 0
+var day_phase_timer := 0.0
+var lightning_wave_radius := 0.0
+var lightning_wave_alpha := 0.0
+var resource_drops: Array[Dictionary] = []
+var resource_inventory := {"agua": 0, "suministros": 0, "materiales": 0}
+var visibility_overlay: ColorRect
 var climate_controller: ClimateManager
 var climate_config: ClimateSettings
 var username := ""
@@ -334,6 +342,7 @@ func _process(delta: float) -> void:
 				status_label.text = "ARMA LISTA"
 			_update_hud()
 	_update_weather(delta)
+	_update_visibility_overlay()
 	if touch_root != null:
 		var touch_available := _touch_controls_available()
 		touch_root.visible = touch_available and mode in ["playing", "game_over"] and not upgrade_selecting
@@ -422,6 +431,8 @@ func _weather_profile(weather_name: String) -> Dictionary:
 			return {"darkness": 0.30, "visibility": 0.82, "rain": 1.0, "fog": 0.14}
 		"niebla":
 			return {"darkness": 0.16, "visibility": 0.54, "rain": 0.0, "fog": 0.82}
+		"viento":
+			return {"darkness": 0.06, "visibility": 0.92, "rain": 0.0, "fog": 0.05}
 		"noche":
 			return {"darkness": 0.48, "visibility": 0.66, "rain": 0.10, "fog": 0.20}
 	return {"darkness": 0.0, "visibility": 1.0, "rain": 0.0, "fog": 0.0}
@@ -437,6 +448,40 @@ func _weather_duration(weather_name: String) -> float:
 		return 120.0
 	return climate_config.night_duration if weather_name == "noche" else climate_config.day_duration
 
+func _phase_duration(phase_name: String) -> float:
+	var day_length := climate_config.day_duration if climate_config != null else 180.0
+	if phase_name == "noche":
+		return climate_config.night_duration if climate_config != null else 120.0
+	match phase_name:
+		"amanecer":
+			return day_length * 0.12
+		"mañana":
+			return day_length * 0.30
+		"tarde":
+			return day_length * 0.30
+		"atardecer":
+			return day_length * 0.28
+	return day_length * 0.25
+
+func _set_day_phase(next_phase: String, announce := true) -> void:
+	day_phase = next_phase
+	day_phase_timer = _phase_duration(next_phase)
+	var phase_weather := "noche" if next_phase == "noche" else ("nublado" if next_phase in ["amanecer", "atardecer"] else "soleado")
+	_set_weather(phase_weather, announce)
+	if announce and mode == "playing" and status_label != null:
+		var phase_names := {"amanecer": "AMANECE", "mañana": "MAÑANA", "tarde": "TARDE", "atardecer": "ATARDECE", "noche": "NOCHE"}
+		status_label.text = "FASE: %s" % str(phase_names.get(next_phase, next_phase.to_upper()))
+
+func _update_day_cycle(delta: float) -> void:
+	if not _climate_enabled() or mode != "playing":
+		return
+	day_phase_timer = maxf(0.0, day_phase_timer - delta)
+	if day_phase_timer > 0.0:
+		return
+	day_phase_index = (day_phase_index + 1) % 5
+	var phases := ["amanecer", "mañana", "tarde", "atardecer", "noche"]
+	_set_day_phase(str(phases[day_phase_index]), true)
+
 func _random_change_interval() -> float:
 	if climate_config == null:
 		return 120.0
@@ -446,6 +491,9 @@ func _set_weather(next_weather: String, announce: bool = true) -> void:
 	if not _climate_enabled():
 		next_weather = "soleado"
 	weather = next_weather
+	if is_instance_valid(climate_controller):
+		climate_controller.set_weather_audio(next_weather, climate_config.climate_transition_speed if climate_config != null else -1.0)
+		climate_controller.notify_climate_changed(next_weather)
 	var profile := _weather_profile(next_weather)
 	var rain_target := float(profile["rain"]) * (climate_config.rain_intensity if climate_config != null else 1.0)
 	var fog_target := float(profile["fog"]) * (climate_config.fog_intensity if climate_config != null else 1.0)
@@ -468,6 +516,8 @@ func _set_weather(next_weather: String, announce: bool = true) -> void:
 func _maybe_change_weather(force: bool = false) -> void:
 	if not _climate_enabled():
 		return
+	if day_phase == "noche":
+		return
 	if not force and weather_change_timer > 0.0:
 		return
 	if not force and wave < next_weather_wave:
@@ -486,7 +536,7 @@ func _roll_weather() -> String:
 		"lluvia": climate_config.rain_probability if climate_config != null else 0.28,
 		"tormenta": climate_config.storm_probability if climate_config != null else 0.12,
 		"niebla": climate_config.fog_probability if climate_config != null else 0.18,
-		"noche": 0.80
+		"viento": climate_config.wind_probability if climate_config != null else 0.16
 	}
 	weights.erase(weather)
 	var total := 0.0
@@ -508,10 +558,13 @@ func _update_weather(delta: float) -> void:
 		weather_change_timer = 0.0
 		weather_lightning_strength = 0.0
 		return
+	_update_day_cycle(delta)
 	weather_change_timer = maxf(0.0, weather_change_timer - delta)
-	if mode == "playing" and weather_change_timer <= 0.0:
+	if mode == "playing" and weather_change_timer <= 0.0 and day_phase != "noche":
 		_maybe_change_weather(false)
 	weather_lightning_strength = maxf(0.0, weather_lightning_strength - delta * 3.8)
+	lightning_wave_radius += delta * 420.0
+	lightning_wave_alpha = maxf(0.0, lightning_wave_alpha - delta * 2.8)
 	if weather != "tormenta":
 		weather_lightning_timer = 0.0
 		return
@@ -521,16 +574,53 @@ func _update_weather(delta: float) -> void:
 		weather_lightning_timer = rng.randf_range(maxf(0.2, frequency * 0.65), maxf(0.3, frequency * 1.35))
 		weather_lightning_strength = 1.0
 		flash_timer = 0.24
+		camera_shake_timer = 0.30
+		camera_shake_strength = 10.0
+		lightning_wave_radius = 18.0
+		lightning_wave_alpha = 0.9
 		_spawn_burst(player_pos, Color("c5e9ff"), 12)
-		if is_instance_valid(audio_manager):
-			audio_manager.call("play_upgrade_sound", "thunder", "LEGENDARIA", "select")
+		if is_instance_valid(climate_controller):
+			climate_controller.play_thunder()
 	queue_redraw()
 
+func _update_visibility_overlay() -> void:
+	if not is_instance_valid(visibility_overlay):
+		return
+	var shader_material := visibility_overlay.material as ShaderMaterial
+	if shader_material == null:
+		return
+	var viewport_size := get_viewport_rect().size
+	var safe_width := maxf(1.0, viewport_size.x)
+	var safe_height := maxf(1.0, viewport_size.y)
+	var player_screen := get_viewport().get_canvas_transform() * player_pos
+	var player_uv := Vector2(
+		clampf(player_screen.x / safe_width, 0.0, 1.0),
+		clampf(player_screen.y / safe_height, 0.0, 1.0)
+	)
+	shader_material.set_shader_parameter("player_uv", player_uv)
+	shader_material.set_shader_parameter("visibility", weather_visibility)
+	shader_material.set_shader_parameter("darkness", weather_darkness if mode == "playing" else 0.0)
+	shader_material.set_shader_parameter("fog_strength", weather_fog_strength if mode == "playing" else 0.0)
+	shader_material.set_shader_parameter("aspect", safe_width / safe_height)
+	visibility_overlay.visible = mode == "playing" and (weather_darkness > 0.001 or weather_fog_strength > 0.001)
+
 func _weather_player_speed() -> float:
-	return 0.95 if weather == "lluvia" or weather == "tormenta" else 1.0
+	if weather == "lluvia":
+		return 0.95
+	if weather == "tormenta":
+		return 0.93
+	if weather == "viento":
+		return 0.97
+	return 1.0
 
 func _weather_zombie_speed() -> float:
-	return 0.95 if weather == "lluvia" or weather == "tormenta" else 1.0
+	if weather == "tormenta":
+		return 1.05
+	if weather == "lluvia":
+		return 0.95
+	if weather == "noche":
+		return 1.02
+	return 1.0
 
 func _night_bonus_for_enemy(data: Resource) -> float:
 	if weather != "noche":
@@ -1443,6 +1533,16 @@ func _build_hud() -> void:
 	hud = CanvasLayer.new()
 	hud.name = "HUD"
 	add_child(hud)
+	visibility_overlay = ColorRect.new()
+	visibility_overlay.name = "WeatherVisibilityMask"
+	visibility_overlay.position = Vector2.ZERO
+	visibility_overlay.size = WORLD_SIZE
+	visibility_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	visibility_overlay.z_index = -5
+	var visibility_shader := Shader.new()
+	visibility_overlay.material = ShaderMaterial.new()
+	(visibility_overlay.material as ShaderMaterial).shader = visibility_shader
+	hud.add_child(visibility_overlay)
 	var top := ColorRect.new()
 	top.position = Vector2(20, 18)
 	top.size = Vector2(1240, 86)
@@ -2150,13 +2250,20 @@ func _start_game_after_transition() -> void:
 	spawn_timer = 0.0
 	game_time = 0.0
 	weather = "soleado"
-	next_weather_wave = rng.randi_range(3, 4)
+	day_phase = "amanecer"
+	day_phase_index = 0
+	day_phase_timer = _phase_duration(day_phase)
+	next_weather_wave = 3
 	weather_darkness = 0.0
 	weather_visibility = 1.0
 	weather_rain_strength = 0.0
 	weather_fog_strength = 0.0
 	weather_lightning_strength = 0.0
 	weather_lightning_timer = 0.0
+	lightning_wave_radius = 0.0
+	lightning_wave_alpha = 0.0
+	resource_drops.clear()
+	resource_inventory = {"agua": 0, "suministros": 0, "materiales": 0}
 	_set_weather("soleado", false)
 	player_pos = Vector2(640, 405)
 	_configure_player_sprite()
@@ -2193,6 +2300,7 @@ func _update_game(delta: float) -> void:
 	player_pos = _move_with_obstacles(player_pos, intended_player_pos, 18.0)
 	player_pos.x = clampf(player_pos.x, 34.0, 1246.0)
 	player_pos.y = clampf(player_pos.y, 126.0, 690.0)
+	_collect_climate_resources()
 	if world_camera != null and world_camera.enabled:
 		world_camera.position = player_pos
 	if touch_shoot_pressed:
@@ -2220,7 +2328,7 @@ func _update_game(delta: float) -> void:
 		wave += 1
 		wave_timer = 0.0
 		combo = 0
-		_maybe_change_weather(true)
+		_maybe_change_weather(false)
 		_build_props()
 		_spawn_wave()
 	_update_hud()
@@ -2403,9 +2511,48 @@ func _unlock_enemy_type(enemy_index: int) -> void:
 func _spawn_wave() -> void:
 	for i in range(3 + wave * 2):
 		_spawn_zombie()
+	_spawn_climate_resources()
 	status_label.text = "OLEADA %d: LA NOCHE EMPEORA" % wave
 	if is_instance_valid(audio_manager):
 		audio_manager.call("play_game_event", "wave")
+
+func _spawn_climate_resources() -> void:
+	if road_spawn_points.is_empty():
+		_build_road_spawn_points()
+	if road_spawn_points.is_empty():
+		return
+	var count := 1
+	if weather == "lluvia":
+		count = maxi(1, int(round(climate_config.rain_resource_multiplier if climate_config != null else 1.25)))
+	elif weather == "niebla":
+		if rng.randf() <= 0.65:
+			count = maxi(1, int(round(climate_config.fog_supply_multiplier if climate_config != null else 1.35)))
+	elif weather == "tormenta":
+		count = maxi(1, int(round(climate_config.storm_material_multiplier if climate_config != null else 1.50)))
+	count = mini(count, 3)
+	for i in range(count):
+		var resource_kind := "suministros"
+		if weather == "lluvia":
+			resource_kind = "agua"
+		elif weather == "tormenta":
+			resource_kind = "materiales"
+		var point_index := rng.randi_range(0, road_spawn_points.size() - 1)
+		var drop_position: Vector2 = road_spawn_points[point_index] + Vector2(rng.randf_range(-45.0, 45.0), rng.randf_range(-30.0, 30.0))
+		resource_drops.append({"pos": drop_position, "kind": resource_kind, "pulse": rng.randf_range(0.0, TAU)})
+
+func _collect_climate_resources() -> void:
+	for i in range(resource_drops.size() - 1, -1, -1):
+		var drop: Dictionary = resource_drops[i]
+		var drop_position: Vector2 = drop.get("pos", player_pos)
+		if player_pos.distance_to(drop_position) > 34.0:
+			continue
+		var resource_kind := str(drop.get("kind", "suministros"))
+		resource_inventory[resource_kind] = int(resource_inventory.get(resource_kind, 0)) + 1
+		resource_drops.remove_at(i)
+		if status_label != null:
+			status_label.text = "RECURSO: %s +1" % resource_kind.to_upper()
+		if is_instance_valid(audio_manager):
+			audio_manager.call("play_game_event", "pickup")
 
 func _spawn_zombie() -> void:
 	if road_spawn_points.is_empty():
@@ -2819,6 +2966,19 @@ func _draw() -> void:
 		if weather == "niebla" and zombie["pos"].distance_to(player_pos) > 420.0:
 			continue
 		_draw_zombie(zombie)
+	for drop in resource_drops:
+		var drop_position: Vector2 = drop.get("pos", Vector2.ZERO)
+		var resource_kind := str(drop.get("kind", "suministros"))
+		var resource_color := Color("d6c56b")
+		if resource_kind == "agua":
+			resource_color = Color("4dc9e8")
+		elif resource_kind == "materiales":
+			resource_color = Color("d98956")
+		var pulse := 1.0 + sin(game_time * 3.0 + float(drop.get("pulse", 0.0))) * 0.12
+		draw_circle(drop_position, 9.0 * pulse, Color(resource_color, 0.16))
+		draw_arc(drop_position, 12.0 * pulse, 0.0, TAU, 20, Color(resource_color, 0.8), 2.0)
+		draw_line(drop_position + Vector2(-5, 0), drop_position + Vector2(5, 0), resource_color, 2.0)
+		draw_line(drop_position + Vector2(0, -5), drop_position + Vector2(0, 5), resource_color, 2.0)
 	draw_circle(player_pos + Vector2(0, 28), 24, Color(0.0, 0.0, 0.0, 0.32))
 	for particle in particles:
 		var alpha: float = clampf(float(particle["life"]) * 1.5, 0.0, 1.0)
@@ -2831,7 +2991,7 @@ func _draw() -> void:
 
 func _draw_weather_effects() -> void:
 	if weather_darkness > 0.0:
-		draw_rect(Rect2(Vector2.ZERO, WORLD_SIZE), Color(0.015, 0.025, 0.055, weather_darkness))
+		draw_rect(Rect2(Vector2.ZERO, WORLD_SIZE), Color(0.015, 0.025, 0.055, weather_darkness * 0.18))
 	if weather == "noche":
 		# Halo ambiental tenue para conservar legibilidad del jugador.
 		draw_circle(player_pos, 150.0, Color(0.24, 0.34, 0.40, 0.055))
@@ -2850,8 +3010,15 @@ func _draw_weather_effects() -> void:
 			var fog_x := fmod(float(i * 217) + game_time * (12.0 + i * 2.0), WORLD_SIZE.x + 260.0) - 130.0
 			var fog_y := 160.0 + float(i * 72)
 			draw_circle(Vector2(fog_x, fog_y), 110.0 + float(i * 8), Color(0.58, 0.68, 0.72, 0.045 * weather_fog_strength))
+	if weather == "viento":
+		for i in range(18):
+			var wind_x := fmod(float(i * 93) + game_time * 260.0, WORLD_SIZE.x + 180.0) - 90.0
+			var wind_y := 150.0 + float((i * 67) % 480)
+			draw_line(Vector2(wind_x, wind_y), Vector2(wind_x + 34.0, wind_y - 5.0), Color(0.70, 0.84, 0.86, 0.11), 1.5)
 	if weather_lightning_strength > 0.0:
 		draw_rect(Rect2(Vector2.ZERO, WORLD_SIZE), Color(0.68, 0.86, 1.0, weather_lightning_strength * 0.16))
+	if lightning_wave_alpha > 0.0:
+		draw_arc(player_pos, lightning_wave_radius, 0.0, TAU, 64, Color(0.62, 0.88, 1.0, lightning_wave_alpha), 2.5)
 
 func draw_weather_ellipse(center: Vector2, radius: Vector2, color: Color) -> void:
 	draw_set_transform(center, 0.0, radius)
@@ -3026,6 +3193,8 @@ func _return_to_menu_after_transition(message: String) -> void:
 	print("[DEBUG][MENU] _return_to_menu_after_transition ejecutado | mensaje=", message)
 	if is_instance_valid(audio_manager):
 		audio_manager.call("stop_character_voice")
+	if is_instance_valid(climate_controller):
+		climate_controller.stop_weather_audio(0.6)
 	mode = "menu"
 	touch_move = Vector2.ZERO
 	touch_shoot_pressed = false
