@@ -39,6 +39,10 @@
         #fullscreen-button.is-visible { display: block; }
         #fullscreen-help { position: fixed; z-index: 20; left: 50%; bottom: max(18px, env(safe-area-inset-bottom)); transform: translateX(-50%); display: none; width: min(88vw, 520px); padding: .7rem 1rem; color: #d5e7e8; background: rgba(2, 10, 15, .9); border: 1px solid rgba(110, 231, 213, .45); border-radius: .5rem; text-align: center; font: 500 .78rem Arial, sans-serif; }
         #fullscreen-help.is-visible { display: block; }
+        #orientation-lock { display: none; position: fixed; inset: 0; z-index: 100; place-items: center; padding: 2rem; box-sizing: border-box; color: #dff8ff; background: #02070b url('loading-backdrop.png') center/cover no-repeat; text-align: center; font: 700 clamp(1rem, 4vw, 1.5rem)/1.45 Arial, sans-serif; letter-spacing: .04em; text-shadow: 0 2px 12px #000; }
+        #orientation-lock::before { content: '↻'; display: block; margin-bottom: .8rem; color: #65e6c4; font-size: clamp(3rem, 16vw, 6rem); text-shadow: 0 0 22px rgba(101, 230, 196, .65); }
+        body.orientation-blocked #orientation-lock { display: grid; }
+        body.orientation-blocked #canvas, body.orientation-blocked #boot-loader, body.orientation-blocked #fullscreen-button { visibility: hidden; }
     </style>
 </head>
 <body>
@@ -52,6 +56,7 @@
             <div id="boot-notice"></div>
         </div>
     </div>
+    <div id="orientation-lock" role="status" aria-live="polite">Gira el dispositivo a horizontal para jugar</div>
     <button id="fullscreen-button" type="button" aria-label="Abrir pantalla completa">PANTALLA COMPLETA</button>
     <div id="fullscreen-help" role="status"></div>
     <audio id="boot-music" preload="auto" loop src="audio/menu/Cargando.ogg"></audio>
@@ -66,13 +71,30 @@
         const music = document.getElementById('boot-music');
         const fullscreenButton = document.getElementById('fullscreen-button');
         const fullscreenHelp = document.getElementById('fullscreen-help');
+        const orientationLock = document.getElementById('orientation-lock');
         let audioUnlocked = false;
         let fullscreenRequested = false;
 
         const mobileBrowser = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || navigator.maxTouchPoints > 0;
+        const iosBrowser = /iPhone|iPad|iPod/i.test(navigator.userAgent);
         if (mobileBrowser && !window.matchMedia('(display-mode: standalone)').matches) {
             fullscreenButton.classList.add('is-visible');
         }
+
+        function updateOrientationGuard() {
+            const blocked = mobileBrowser && window.innerHeight > window.innerWidth;
+            document.body.classList.toggle('orientation-blocked', blocked);
+            orientationLock.setAttribute('aria-hidden', String(!blocked));
+        }
+        function requestLandscapeLock() {
+            if (!mobileBrowser || !screen.orientation || !screen.orientation.lock) return;
+            screen.orientation.lock('landscape').catch(() => {
+                if (!iosBrowser) console.info('[Web] El navegador no permite bloquear la orientación fuera de pantalla completa.');
+            });
+        }
+        updateOrientationGuard();
+        window.addEventListener('resize', () => requestAnimationFrame(updateOrientationGuard), {passive: true});
+        window.addEventListener('orientationchange', () => setTimeout(updateOrientationGuard, 250), {passive: true});
 
         function tryStartMusic() {
             if (audioUnlocked) return;
@@ -115,7 +137,10 @@
             document.addEventListener(eventName, tryStartMusic, {capture: true, passive: true});
         });
         document.addEventListener('pointerdown', () => {
-            if (mobileBrowser) requestGameFullscreen();
+            if (mobileBrowser) {
+                requestLandscapeLock();
+                requestGameFullscreen();
+            }
         }, {capture: true, passive: true, once: true});
         document.addEventListener('fullscreenchange', () => {
             if (document.fullscreenElement) fullscreenButton.classList.remove('is-visible');
