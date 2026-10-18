@@ -7,6 +7,14 @@ const UPGRADE_INTERVAL := 25.0
 const MAX_PARTICLES := 180
 const MAGAZINE_SIZE := 12
 const RELOAD_DURATION := 0.85
+## Reduce la presión inicial sin alterar el escalado de las oleadas avanzadas.
+## La oleada 5 recupera exactamente la velocidad anterior.
+const EARLY_WAVE_SPEED_MULTIPLIERS := {
+	1: 0.78,
+	2: 0.84,
+	3: 0.90,
+	4: 0.95
+}
 const ENEMY_DATABASE_SCRIPT := preload("res://scripts/enemies/enemy_database.gd")
 const CHARACTER_DATA_SCRIPT := preload("res://scripts/characters/character_data.gd")
 const STORM_EFFECT_SCRIPT := preload("res://scripts/ui/storm_effect.gd")
@@ -14,6 +22,15 @@ const DESTRUCTIBLE_OBJECT_SCRIPT := preload("res://scripts/world/destructible_ob
 const WORLD_ATMOSPHERE_SCRIPT := preload("res://scripts/world/world_atmosphere.gd")
 const VIRTUAL_JOYSTICK_SCRIPT := preload("res://scripts/ui/virtual_joystick.gd")
 const LOADING_ATMOSPHERE_SCRIPT := preload("res://scripts/ui/loading_screen.gd")
+const BUFF_INDICATOR_SCENE := preload("res://scenes/ui/BuffIndicator.tscn")
+const RESOURCE_SPAWNER_SCRIPT := preload("res://scripts/world/resource_spawner.gd")
+const UPGRADE_BUFF_IDS := {
+	"heavy": "ammo",
+	"fury": "damage",
+	"speed": "speed",
+	"survivor": "shield",
+	"medkit": "heal"
+}
 
 var mode := "menu"
 var player_pos := Vector2(640, 390)
@@ -22,9 +39,11 @@ var player_moving := false
 var player_facing := Vector2.DOWN
 var player_dead := false
 var player_sprite: AnimatedSprite2D
+var buff_indicator: BuffIndicator
 var bullets: Array[Dictionary] = []
 var zombies: Array[Dictionary] = []
 var particles: Array[Dictionary] = []
+var floating_effects: Array[Dictionary] = []
 var props: Array[Dictionary] = []
 var navigation_region: NavigationRegion2D
 var world_parallax: ParallaxBackground
@@ -101,8 +120,8 @@ var day_phase_index := 0
 var day_phase_timer := 0.0
 var lightning_wave_radius := 0.0
 var lightning_wave_alpha := 0.0
-var resource_drops: Array[Dictionary] = []
-var resource_inventory := {"agua": 0, "suministros": 0, "materiales": 0}
+var resource_inventory := {"ammo": 0, "medkit": 0, "scrap": 0, "materials": 0, "food": 0, "water": 0}
+var resource_spawner: ResourceSpawner
 var visibility_overlay: ColorRect
 var climate_controller: ClimateManager
 var climate_config: ClimateSettings
@@ -244,6 +263,14 @@ func _ready() -> void:
 	player_sprite.visible = false
 	player_sprite.z_index = 5
 	add_child(player_sprite)
+	buff_indicator = BUFF_INDICATOR_SCENE.instantiate() as BuffIndicator
+	buff_indicator.name = "BuffIndicator"
+	buff_indicator.position = player_pos
+	buff_indicator.visible = false
+	add_child(buff_indicator)
+	resource_spawner = RESOURCE_SPAWNER_SCRIPT.new()
+	resource_spawner.name = "ResourceSpawner"
+	add_child(resource_spawner)
 	queue_redraw()
 	if is_instance_valid(audio_manager):
 		audio_manager.call("start_menu_music")
@@ -355,6 +382,9 @@ func _process(delta: float) -> void:
 		if is_instance_valid(touch_menu_button):
 			touch_menu_button.visible = _web_mobile_controls_available() and mode == "game_over"
 	if mode == "playing":
+		if is_instance_valid(resource_spawner):
+			resource_spawner.set_weather(weather)
+			resource_spawner.tick(delta, player_pos, props, zombies)
 		_update_game(delta)
 		_update_player_sprite()
 		queue_redraw()
@@ -638,6 +668,9 @@ func _weather_zombie_speed() -> float:
 	if weather == "ola_calor":
 		return 0.95
 	return 1.0
+
+func _early_wave_speed_multiplier() -> float:
+	return float(EARLY_WAVE_SPEED_MULTIPLIERS.get(wave, 1.0))
 
 func _night_bonus_for_enemy(data: Resource) -> float:
 	if weather not in ["noche", "luna_roja"]:
@@ -2168,6 +2201,8 @@ func _update_player_sprite() -> void:
 	if player_sprite == null or player_dead:
 		return
 	player_sprite.position = player_pos
+	if is_instance_valid(buff_indicator):
+		buff_indicator.position = player_pos
 	var suffix := _direction_animation_suffix()
 	var animation_name := "idle_" + suffix
 	if Input.is_action_pressed("shoot") or touch_shoot_pressed:
@@ -2279,10 +2314,15 @@ func _start_game_after_transition() -> void:
 	weather_lightning_timer = 0.0
 	lightning_wave_radius = 0.0
 	lightning_wave_alpha = 0.0
-	resource_drops.clear()
-	resource_inventory = {"agua": 0, "suministros": 0, "materiales": 0}
+	resource_inventory = {"ammo": 0, "medkit": 0, "scrap": 0, "materials": 0, "food": 0, "water": 0}
 	_set_weather("soleado", false)
 	player_pos = Vector2(640, 405)
+	if is_instance_valid(buff_indicator):
+		buff_indicator.clear_buffs()
+		buff_indicator.position = player_pos
+		buff_indicator.visible = true
+	if is_instance_valid(resource_spawner):
+		resource_spawner.clear()
 	_configure_player_sprite()
 	bullets.clear()
 	for old_zombie in zombies:
@@ -2291,6 +2331,7 @@ func _start_game_after_transition() -> void:
 			old_node.queue_free()
 	zombies.clear()
 	particles.clear()
+	floating_effects.clear()
 	hud.visible = true
 	game_over_label.visible = false
 	if world_parallax != null:
@@ -2421,7 +2462,7 @@ func _update_zombies(delta: float) -> void:
 		if not is_instance_valid(zombie_node) or zombie_node.is_dead:
 			continue
 		var distance: float = zombie["pos"].distance_to(player_pos)
-		var speed := float(zombie["speed"]) * (1.0 + wave * 0.035) * _weather_zombie_speed()
+		var speed := float(zombie["speed"]) * (1.0 + wave * 0.035) * _early_wave_speed_multiplier() * _weather_zombie_speed()
 		var route_target := player_pos
 		var route_index := int(zombie.get("road_target_index", -1))
 		if route_index >= 0 and route_index < road_waypoints.size():
@@ -2534,9 +2575,7 @@ func _spawn_wave() -> void:
 		audio_manager.call("play_game_event", "wave")
 
 func _spawn_climate_resources() -> void:
-	if road_spawn_points.is_empty():
-		_build_road_spawn_points()
-	if road_spawn_points.is_empty():
+	if not is_instance_valid(resource_spawner):
 		return
 	var count := 1
 	if weather == "lluvia":
@@ -2551,33 +2590,56 @@ func _spawn_climate_resources() -> void:
 	elif weather == "ceniza_toxica":
 		count = maxi(1, int(round(climate_config.fog_supply_multiplier if climate_config != null else 1.35)))
 	count = mini(count, 3)
-	for i in range(count):
-		var resource_kind := "suministros"
-		if weather == "lluvia":
-			resource_kind = "agua"
-		elif weather == "tormenta":
-			resource_kind = "materiales"
-		elif weather == "ola_calor":
-			resource_kind = "agua"
-		elif weather == "ceniza_toxica":
-			resource_kind = "suministros"
-		var point_index := rng.randi_range(0, road_spawn_points.size() - 1)
-		var drop_position: Vector2 = road_spawn_points[point_index] + Vector2(rng.randf_range(-45.0, 45.0), rng.randf_range(-30.0, 30.0))
-		resource_drops.append({"pos": drop_position, "kind": resource_kind, "pulse": rng.randf_range(0.0, TAU)})
+	var resource_kind := "scrap"
+	if weather == "lluvia":
+		resource_kind = "water"
+	elif weather == "tormenta":
+		resource_kind = "materials"
+	elif weather == "ola_calor":
+		resource_kind = "water"
+	elif weather == "ceniza_toxica":
+		resource_kind = "materials"
+	resource_spawner.set_weather(weather)
+	resource_spawner.request_spawn(count, resource_kind)
 
 func _collect_climate_resources() -> void:
-	for i in range(resource_drops.size() - 1, -1, -1):
-		var drop: Dictionary = resource_drops[i]
-		var drop_position: Vector2 = drop.get("pos", player_pos)
-		if player_pos.distance_to(drop_position) > 34.0:
+	if not is_instance_valid(resource_spawner):
+		return
+	for pickup in resource_spawner.get_active_pickups():
+		if not is_instance_valid(pickup) or player_pos.distance_to(pickup.position) > 42.0:
 			continue
-		var resource_kind := str(drop.get("kind", "suministros"))
-		resource_inventory[resource_kind] = int(resource_inventory.get(resource_kind, 0)) + 1
-		resource_drops.remove_at(i)
-		if status_label != null:
-			status_label.text = "RECURSO: %s +1" % resource_kind.to_upper()
-		if is_instance_valid(audio_manager):
-			audio_manager.call("play_game_event", "pickup")
+		_collect_resource_pickup(pickup)
+
+func _collect_resource_pickup(pickup: PickupItem) -> void:
+	var resource_kind := pickup.resource_id
+	var amount := pickup.amount
+	resource_inventory[resource_kind] = int(resource_inventory.get(resource_kind, 0)) + amount
+	match resource_kind:
+		"ammo":
+			ammo_in_magazine = mini(MAGAZINE_SIZE, ammo_in_magazine + amount)
+		"medkit":
+			lives = mini(3, lives + amount)
+		"food":
+			score += 25 * amount
+	_spawn_burst(pickup.position, Color("71d7c2"), 16)
+	_spawn_upgrade_world_effect("%s +%d" % [_resource_display_name(resource_kind), amount], Color("71d7c2"))
+	if status_label != null:
+		status_label.text = "RECURSO: %s +%d" % [_resource_display_name(resource_kind), amount]
+	if is_instance_valid(audio_manager):
+		audio_manager.call("play_game_event", "pickup")
+	if is_instance_valid(resource_spawner):
+		resource_spawner.remove_pickup(pickup)
+	_update_hud()
+
+func _resource_display_name(resource_kind: String) -> String:
+	return {
+		"ammo": "MUNICIÓN",
+		"medkit": "BOTIQUÍN",
+		"scrap": "CHATARRA",
+		"materials": "MATERIALES",
+		"food": "COMIDA",
+		"water": "AGUA"
+	}.get(resource_kind, resource_kind.to_upper())
 
 func _spawn_zombie() -> void:
 	if road_spawn_points.is_empty():
@@ -2624,6 +2686,22 @@ func _update_particles(delta: float) -> void:
 			particles.remove_at(i)
 		else:
 			particles[i] = particle
+	for i in range(floating_effects.size() - 1, -1, -1):
+		var effect: Dictionary = floating_effects[i]
+		effect["pos"] = effect["pos"] + Vector2(0.0, -24.0) * delta
+		effect["life"] = float(effect["life"]) - delta
+		if effect["life"] <= 0.0:
+			floating_effects.remove_at(i)
+		else:
+			floating_effects[i] = effect
+
+func _spawn_upgrade_world_effect(title: String, color: Color) -> void:
+	floating_effects.append({
+		"pos": player_pos + Vector2(0.0, -82.0),
+		"text": "+ %s" % title,
+		"color": color,
+		"life": 1.35
+	})
 
 func _update_hud() -> void:
 	score_label.text = "PUNTOS  %06d" % score
@@ -2835,6 +2913,9 @@ func _choose_upgrade(index: int) -> void:
 		await get_tree().create_timer(0.30).timeout
 	await get_tree().create_timer(0.42).timeout
 	var applied_level := _apply_upgrade(selected)
+	var buff_id := str(UPGRADE_BUFF_IDS.get(selected_base_id, ""))
+	if not buff_id.is_empty():
+		apply_player_buff(buff_id)
 	var max_level := int(UPGRADE_MAX_LEVELS.get(selected_base_id, MAX_UPGRADE_LEVEL))
 	var reached_max := not bool(selected.get("evolution", false)) and applied_level >= max_level
 	if is_instance_valid(audio_manager):
@@ -2844,6 +2925,7 @@ func _choose_upgrade(index: int) -> void:
 	mode = "playing"
 	upgrade_panel.visible = false
 	upgrade_overlay.visible = false
+	_spawn_upgrade_world_effect(str(selected["title"]), _upgrade_color(selected_base_id))
 	var rarity_banner := "LEGENDARIA\n" if selected_rarity == "LEGENDARIA" else ""
 	if reached_max:
 		upgrade_confirm_label.text = rarity_banner + ("MEJORA MAXIMIZADA\n%s  ·  NIVEL %s" % [selected["title"], _roman_level(applied_level)])
@@ -2934,6 +3016,16 @@ func _apply_upgrade(selected: Dictionary) -> int:
 			protection_timer = minf(9.0, protection_timer + float(protection_duration))
 	return next_level
 
+## API común para extras temporales o permanentes.
+## duration <= 0 mantiene el icono hasta iniciar una nueva partida.
+func apply_player_buff(buff_id: String, duration: float = -1.0) -> void:
+	if is_instance_valid(buff_indicator):
+		buff_indicator.add_buff(buff_id, duration)
+
+func remove_player_buff(buff_id: String) -> void:
+	if is_instance_valid(buff_indicator):
+		buff_indicator.remove_buff(buff_id)
+
 func _apply_evolution(selected: Dictionary) -> void:
 	var base_id := str(selected.get("base_id", ""))
 	match base_id:
@@ -2971,6 +3063,8 @@ func _end_game() -> void:
 	mode = "game_over"
 	player_dead = true
 	player_moving = false
+	if is_instance_valid(buff_indicator):
+		buff_indicator.visible = false
 	if player_sprite != null:
 		player_sprite.position = player_pos
 		player_sprite.flip_h = false
@@ -2991,25 +3085,21 @@ func _draw() -> void:
 		if weather == "niebla" and zombie["pos"].distance_to(player_pos) > 420.0:
 			continue
 		_draw_zombie(zombie)
-	for drop in resource_drops:
-		var drop_position: Vector2 = drop.get("pos", Vector2.ZERO)
-		var resource_kind := str(drop.get("kind", "suministros"))
-		var resource_color := Color("d6c56b")
-		if resource_kind == "agua":
-			resource_color = Color("4dc9e8")
-		elif resource_kind == "materiales":
-			resource_color = Color("d98956")
-		var pulse := 1.0 + sin(game_time * 3.0 + float(drop.get("pulse", 0.0))) * 0.12
-		draw_circle(drop_position, 9.0 * pulse, Color(resource_color, 0.16))
-		draw_arc(drop_position, 12.0 * pulse, 0.0, TAU, 20, Color(resource_color, 0.8), 2.0)
-		draw_line(drop_position + Vector2(-5, 0), drop_position + Vector2(5, 0), resource_color, 2.0)
-		draw_line(drop_position + Vector2(0, -5), drop_position + Vector2(0, 5), resource_color, 2.0)
 	draw_circle(player_pos + Vector2(0, 28), 24, Color(0.0, 0.0, 0.0, 0.32))
 	for particle in particles:
 		var alpha: float = clampf(float(particle["life"]) * 1.5, 0.0, 1.0)
 		var color: Color = particle["color"]
 		color.a = alpha
 		draw_circle(particle["pos"], float(particle["size"]), color)
+	for effect in floating_effects:
+		var effect_alpha: float = clampf(float(effect["life"]) * 2.5, 0.0, 1.0)
+		var effect_color: Color = effect["color"]
+		effect_color.a = effect_alpha
+		var effect_pos: Vector2 = effect["pos"]
+		var effect_text: String = str(effect["text"])
+		var effect_font := ThemeDB.fallback_font
+		draw_string(effect_font, effect_pos + Vector2(-160.0, 2.0), effect_text, HORIZONTAL_ALIGNMENT_CENTER, 320.0, 21, Color(0.0, 0.0, 0.0, effect_alpha * 0.85))
+		draw_string(effect_font, effect_pos + Vector2(-160.0, 0.0), effect_text, HORIZONTAL_ALIGNMENT_CENTER, 320.0, 21, effect_color)
 	if flash_timer > 0:
 		draw_circle(player_pos + player_pos.direction_to(aim_pos) * 33.0, 14.0, Color(1.0, 0.83, 0.43, flash_timer * 8.0))
 	_draw_weather_effects()
