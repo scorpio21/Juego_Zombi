@@ -149,16 +149,28 @@ Los iconos de buff aparecen sobre el jugador mientras el efecto está activo. Lo
 
 ### Clima dinámico y ciclo día/noche
 
-El clima tiene efectos de gameplay, no solo visuales:
+El clima tiene efectos de gameplay, no solo visuales. El estado se muestra en el HUD como `CLIMA: ...` y las transiciones se realizan progresivamente para evitar cambios bruscos.
 
-- **Soleado** — visibilidad máxima.
-- **Nublado** — ambiente más oscuro y menor visibilidad.
-- **Lluvia** — reduce un 5% la velocidad del jugador y de los zombies; añade lluvia y charcos.
-- **Tormenta** — relámpagos, oscurecimiento, flashes y truenos.
-- **Niebla** — reduce la distancia de visión y adelanta los puntos de entrada de los enemigos.
-- **Noche** — oscurece el mapa y fortalece a los infectados.
+| Clima | Efecto visual | Efecto de juego |
+| --- | --- | --- |
+| **Soleado** | Máxima luz y visibilidad. | Sin modificadores. Es el estado de referencia. |
+| **Nublado** | Oscurece ligeramente el escenario y añade una neblina suave. | Sin penalización directa de velocidad o vida. |
+| **Lluvia** | Lluvia, charcos y ambiente húmedo. | Jugador y zombies se mueven un `5%` más despacio. Aumenta la aparición de suministros de agua (`x1,25` en dificultad Normal). |
+| **Tormenta** | Lluvia intensa, relámpagos, flashes, temblor de cámara y truenos. | El jugador se mueve un `7%` más despacio y los zombies un `5%` más rápido. Aumenta los materiales que aparecen (`x1,50` en Normal). |
+| **Niebla** | Reduce mucho la visibilidad y cubre el escenario con niebla densa. | Los zombies aparecen aproximadamente un `12%` más cerca del jugador. Hay un `65%` de probabilidad de solicitar un suministro adicional; también favorece comida y botiquines (`x1,70` de peso). |
+| **Viento** | Oscurecimiento leve, bruma ligera y audio ambiental. | El jugador se mueve un `3%` más despacio. |
+| **Noche** | Oscurecimiento fuerte, visibilidad reducida y ligera bruma. | El jugador conserva su velocidad; los zombies se mueven un `2%` más rápido y reciben una bonificación de vida/daño configurable. |
+| **Luna roja** | Noche rojiza, oscura y con visibilidad reducida. | Los zombies se mueven un `8%` más rápido y reciben la bonificación nocturna aumentada. |
+| **Ceniza tóxica** | Nube de ceniza muy densa y visibilidad mínima. | Los zombies se mueven un `2%` más despacio y el clima solicita materiales al generar recursos. No aplica por sí sola la bonificación de noche. |
+| **Ola de calor** | Luz intensa, aire distorsionado y ambiente seco. | El jugador se mueve un `10%` más despacio, los zombies un `5%` más despacio y se favorece la aparición de agua. |
 
-La noche aplica una bonificación configurable por categoría de enemigo: básica, corredor, infectado y élite/jefe.
+#### Ciclo del día
+
+El ciclo automático pasa por estas fases: **amanecer → mañana → tarde → atardecer → noche**. En la configuración Normal dura aproximadamente `180 s` el periodo diurno y `120 s` la noche. Las fases amanecer, tarde y atardecer usan una transición nublada; la noche activa la máscara de oscuridad y los modificadores de los infectados.
+
+La bonificación nocturna base en Normal es `+1%` de vida/daño. Se multiplica por categoría: `x2` para corredores, `x3` para tóxicos/científicos/quemados y `x4` para élites, mutantes y blindados. En Luna roja los enemigos comunes reciben además `x1,35` sobre la bonificación base.
+
+Las probabilidades y duraciones cambian con la dificultad. En Normal, las probabilidades relativas configuradas son: lluvia `28%`, niebla `18%`, tormenta `12%`, viento `16%`, luna roja `4%`, ceniza tóxica `3%` y ola de calor `5%`. No son porcentajes independientes por segundo: el juego elige un nuevo estado entre las opciones disponibles cuando termina el intervalo de clima.
 
 Las configuraciones están disponibles en:
 
