@@ -1557,12 +1557,29 @@ func _build_stats_panel(parent: Node) -> void:
 
 func _show_statistics() -> void:
 	_refresh_leaderboard()
+	# El panel de estadísticas ocupa la zona central del menú. Ocultamos los
+	# marcos decorativos de personajes y el botón principal para que no se
+	# mezclen visualmente con la tabla.
+	for card_frame in character_card_frames:
+		if is_instance_valid(card_frame):
+			card_frame.visible = false
+	if is_instance_valid(character_highlight):
+		character_highlight.visible = false
+	if is_instance_valid(start_button):
+		start_button.visible = false
 	stats_panel.visible = true
 	if is_instance_valid(audio_manager):
 		audio_manager.call("play_ui_event", "open")
 
 func _close_statistics() -> void:
 	stats_panel.visible = false
+	for card_frame in character_card_frames:
+		if is_instance_valid(card_frame):
+			card_frame.visible = true
+	if is_instance_valid(character_highlight) and selected_character >= 0:
+		character_highlight.visible = true
+	if is_instance_valid(start_button):
+		start_button.visible = true
 	if is_instance_valid(audio_manager):
 		audio_manager.call("play_ui_event", "close")
 
