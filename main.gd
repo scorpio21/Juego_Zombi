@@ -174,7 +174,7 @@ var active_zone_definition: ZoneDefinition
 var flash_timer := 0.0
 var game_time := 0.0
 var weather := "soleado"
-var next_weather_wave := 3
+var next_weather_wave := 2
 var weather_darkness := 0.0
 var weather_visibility := 1.0
 var weather_rain_strength := 0.0
@@ -680,10 +680,11 @@ func _maybe_change_weather(force: bool = false) -> void:
 	if not force and wave < next_weather_wave:
 		weather_change_timer = 2.0
 		return
-	next_weather_wave = wave + rng.randi_range(3, 4)
+	# El clima debe aparecer durante una partida normal, no depender de una
+	# tirada rara después de varias oleadas. Se mantiene una ventana de 2-3
+	# oleadas para que el cambio sea reconocible sin interrumpir el combate.
+	next_weather_wave = wave + rng.randi_range(2, 3)
 	weather_change_timer = _random_change_interval()
-	if rng.randf() > 0.78 and not force:
-		return
 	_set_weather(_roll_weather(), true)
 
 func _roll_weather() -> String:
@@ -2732,7 +2733,7 @@ func _start_game_after_transition() -> void:
 	day_phase = "amanecer"
 	day_phase_index = 0
 	day_phase_timer = _phase_duration(day_phase)
-	next_weather_wave = 3
+	next_weather_wave = 2
 	weather_darkness = 0.0
 	weather_visibility = 1.0
 	weather_rain_strength = 0.0
@@ -3819,10 +3820,10 @@ func _draw_weather_effects() -> void:
 		# ningún círculo alrededor del jugador.
 		pass
 	if weather_rain_strength > 0.0:
-		for i in range(58):
+		for i in range(96):
 			var x := fmod(float(i * 83) + game_time * 145.0, WORLD_SIZE.x)
 			var y := fmod(float(i * 47) + game_time * 235.0, WORLD_SIZE.y)
-			draw_line(Vector2(x, y), Vector2(x - 4.0, y + 18.0), Color(0.68, 0.82, 0.9, 0.14 * weather_rain_strength), 1.0)
+			draw_line(Vector2(x, y), Vector2(x - 4.0, y + 18.0), Color(0.68, 0.82, 0.9, 0.25 * weather_rain_strength), 1.0)
 		# Charcos simples integrados como reflejos, no como obstáculos.
 		for i in range(8):
 			var puddle_x := 90.0 + float(i * 151) + sin(game_time * 0.35 + i) * 18.0
@@ -3832,7 +3833,7 @@ func _draw_weather_effects() -> void:
 		for i in range(7):
 			var fog_x := fmod(float(i * 217) + game_time * (12.0 + i * 2.0), WORLD_SIZE.x + 260.0) - 130.0
 			var fog_y := 160.0 + float(i * 72)
-			draw_circle(Vector2(fog_x, fog_y), 110.0 + float(i * 8), Color(0.58, 0.68, 0.72, 0.045 * weather_fog_strength))
+			draw_circle(Vector2(fog_x, fog_y), 110.0 + float(i * 8), Color(0.58, 0.68, 0.72, 0.075 * weather_fog_strength))
 	if weather == "viento":
 		for i in range(18):
 			var wind_x := fmod(float(i * 93) + game_time * 260.0, WORLD_SIZE.x + 180.0) - 90.0

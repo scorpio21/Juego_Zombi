@@ -9,7 +9,7 @@ signal climate_audio_changed(climate_name: String)
 
 @export_category("Audio meteorológico")
 @export var weather_audio_enabled: bool = true ## Activa el bus y la ambientación meteorológica.
-@export_range(-40.0, 6.0, 0.5, "suffix:dB") var weather_audio_volume_db: float = -16.0 ## Volumen del bus Weather.
+@export_range(-40.0, 6.0, 0.5, "suffix:dB") var weather_audio_volume_db: float = -12.0 ## Volumen del bus Weather.
 @export_range(0.1, 10.0, 0.1, "suffix:s") var weather_audio_fade_seconds: float = 2.0 ## Duración del crossfade.
 
 const WEATHER_BUS := "Weather"

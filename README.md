@@ -172,6 +172,8 @@ La bonificación nocturna base en Normal es `+1%` de vida/daño. Se multiplica p
 
 Las probabilidades y duraciones cambian con la dificultad. En Normal, las probabilidades relativas configuradas son: lluvia `28%`, niebla `18%`, tormenta `12%`, viento `16%`, luna roja `4%`, ceniza tóxica `3%` y ola de calor `5%`. No son porcentajes independientes por segundo: el juego elige un nuevo estado entre las opciones disponibles cuando termina el intervalo de clima.
 
+Durante una partida se intenta cambiar el clima cada `2–3` oleadas, además del ciclo fijo de día/noche. El audio ambiental disponible es: pájaros de día, lluvia, tormenta, niebla, viento y ambiente nocturno; luna roja usa el ambiente nocturno, ceniza tóxica usa niebla y ola de calor usa viento. **La nieve todavía no es un estado climático implementado**.
+
 Las configuraciones están disponibles en:
 
 ```text
