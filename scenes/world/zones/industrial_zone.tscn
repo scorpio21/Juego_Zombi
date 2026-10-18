@@ -1,0 +1,27 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/world/zone_definition.gd" id="1_zone"]
+
+[node name="IndustrialZone" type="Node2D"]
+script = ExtResource("1_zone")
+zone_id = "industrial_zone"
+display_name = "ZONA INDUSTRIAL"
+exit_position = Vector2(1110, 620)
+enemy_spawn_points = PackedVector2Array(990, 150, 1080, 230, 1160, 300)
+enemy_waypoints = PackedVector2Array(950, 225, 855, 315, 755, 405, 650, 455)
+navigation_boundary = PackedVector2Array(110, 145, 1130, 145, 1240, 260, 1110, 380, 960, 470, 820, 675, 300, 675, 190, 560, 270, 420, 130, 300)
+secondary_prop_region = 2
+secondary_prop_position = Vector2(170, 270)
+secondary_prop_kind = "industrial_fuel_canister"
+secondary_prop_health = 190.0
+secondary_prop_size = Vector2(78, 100)
+secondary_prop_reward = "materials"
+secondary_prop_reward_amount = 2
+resource_route_start = Vector2(990, 205)
+resource_route_end = Vector2(570, 640)
+weather_bias = ["tormenta", "viento", "ceniza_toxica"]
+difficulty_multiplier = 1.6
+backdrop_path = "res://assets/world/zones/industrial_backdrop.jpg"
+exit_sprite_path = "res://assets/world/zones/zone_exit.png"
+enemy_pool = PackedStringArray("industrial_brute", "construction", "mutant", "armored")
+resource_preferences = PackedStringArray("scrap", "materials", "ammo")

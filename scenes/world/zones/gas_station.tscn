@@ -1,0 +1,27 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/world/zone_definition.gd" id="1_zone"]
+
+[node name="GasStation" type="Node2D"]
+script = ExtResource("1_zone")
+zone_id = "gas_station"
+display_name = "GASOLINERA"
+exit_position = Vector2(1110, 620)
+enemy_spawn_points = PackedVector2Array(980, 150, 1050, 210, 1160, 260)
+enemy_waypoints = PackedVector2Array(930, 210, 820, 295, 720, 390, 630, 450)
+navigation_boundary = PackedVector2Array(150, 145, 920, 145, 1100, 210, 1160, 330, 990, 430, 820, 520, 710, 675, 350, 675, 240, 540, 300, 390, 170, 300)
+secondary_prop_region = 5
+secondary_prop_position = Vector2(180, 520)
+secondary_prop_kind = "gas_station_barrels"
+secondary_prop_health = 240.0
+secondary_prop_size = Vector2(116, 92)
+secondary_prop_reward = "water"
+secondary_prop_reward_amount = 2
+resource_route_start = Vector2(970, 190)
+resource_route_end = Vector2(560, 640)
+weather_bias = ["soleado", "lluvia", "tormenta"]
+difficulty_multiplier = 1.2
+backdrop_path = "res://assets/world/zones/gas_station_backdrop.jpg"
+exit_sprite_path = "res://assets/world/zones/zone_exit.png"
+enemy_pool = PackedStringArray("gas_burner", "worker", "burned", "police")
+resource_preferences = PackedStringArray("ammo", "water", "materials")

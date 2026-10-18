@@ -7,6 +7,11 @@ var enemy_data_list: Array[Resource] = []
 var unlocked_ids: Array[String] = []
 var list_container: VBoxContainer
 var portrait_sheet: Texture2D
+var animated_portrait_paths := {
+	12: "res://assets/zombies/animated/Zombie_forest_skinned_runner.png",
+	13: "res://assets/zombies/animated/Zombie_infected_lumberjack.png",
+	14: "res://assets/zombies/animated/Zombie_forest_beast.png"
+}
 var panel: Panel
 var title_label: Label
 var close_button: Button
@@ -122,10 +127,24 @@ func _make_entry(data: Resource, unlocked: bool) -> Control:
 	portrait.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	portrait.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	if unlocked and portrait_sheet != null:
-		var cell := Vector2(portrait_sheet.get_width() / 4.0, portrait_sheet.get_height() / 3.0)
+		var source_sheet: Texture2D = portrait_sheet
+		var columns := 4.0
+		var rows := 3.0
+		var animated_path := str(animated_portrait_paths.get(int(data.sprite_index), ""))
+		if not animated_path.is_empty():
+			var animated_sheet := load(animated_path) as Texture2D
+			if animated_sheet != null:
+				source_sheet = animated_sheet
+				columns = 8.0
+				rows = 5.0
+		var cell := Vector2(source_sheet.get_width() / columns, source_sheet.get_height() / rows)
 		var atlas := AtlasTexture.new()
-		atlas.atlas = portrait_sheet
-		atlas.region = Rect2(Vector2((data.sprite_index % 4) * cell.x, floori(data.sprite_index / 4.0) * cell.y), cell)
+		atlas.atlas = source_sheet
+		if not animated_path.is_empty():
+			# La primera fila de cada hoja nueva es el retrato idle.
+			atlas.region = Rect2(Vector2(0.0, 0.0), cell)
+		else:
+			atlas.region = Rect2(Vector2((data.sprite_index % 4) * cell.x, floori(data.sprite_index / 4.0) * cell.y), cell)
 		portrait.texture = atlas
 	else:
 		portrait.modulate = Color(0.05, 0.07, 0.08, 1.0)

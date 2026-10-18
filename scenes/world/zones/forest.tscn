@@ -1,0 +1,27 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/world/zone_definition.gd" id="1_zone"]
+
+[node name="Forest" type="Node2D"]
+script = ExtResource("1_zone")
+zone_id = "forest"
+display_name = "BOSQUE"
+exit_position = Vector2(1110, 620)
+enemy_spawn_points = PackedVector2Array(1010, 150, 1070, 185, 1130, 220)
+enemy_waypoints = PackedVector2Array(950, 210, 850, 290, 740, 370, 640, 405)
+navigation_boundary = PackedVector2Array(170, 150, 1060, 150, 1190, 260, 1040, 390, 900, 520, 760, 675, 360, 675, 210, 560, 330, 430, 400, 260, 330)
+secondary_prop_region = 7
+secondary_prop_position = Vector2(1080, 245)
+secondary_prop_kind = "forest_lamp"
+secondary_prop_health = 140.0
+secondary_prop_size = Vector2(54, 88)
+secondary_prop_reward = "food"
+secondary_prop_reward_amount = 2
+resource_route_start = Vector2(1000, 184)
+resource_route_end = Vector2(540, 650)
+weather_bias = ["soleado", "niebla", "lluvia"]
+difficulty_multiplier = 1.0
+backdrop_path = "res://assets/world/zones/forest_backdrop.jpg"
+exit_sprite_path = "res://assets/world/zones/zone_exit.png"
+enemy_pool = PackedStringArray("forest_skinned_runner", "infected_lumberjack", "forest_beast", "forest_stalker", "worker", "runner")
+resource_preferences = PackedStringArray("food", "water", "scrap")

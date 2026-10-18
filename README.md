@@ -26,6 +26,7 @@ Un videojuego de supervivencia zombie con oleadas, combate directo, cartas de me
 - [Descripción](#descripción)
 - [Características](#características)
 - [Mecánicas](#mecánicas)
+- [Objetos y cartas](#objetos-y-cartas)
 - [Galería](#galería)
 - [Controles](#controles)
 - [Tecnologías](#tecnologías)
@@ -58,6 +59,7 @@ La partida combina acción inmediata con progresión estratégica:
 | Oleadas | ✅ | Zombies que llegan por puntos de aparición situados en la carretera. |
 | Cartas de mejora | ✅ | Tres opciones, pausa de partida, rarezas, acumulación y evoluciones. |
 | Clima dinámico | ✅ | Configurable mediante `ClimateSettings` y `ClimateManager`. |
+| Zonas progresivas | 🟡 | Fondos, navegación, waypoints, rutas de recursos, pools de enemigos, preferencias de loot, dos obstáculos por zona y atlas gráfico v2; faltan pruebas finales. |
 | Bestiario | ✅ | El enemigo se desbloquea al morir, no al aparecer. |
 | Inspección | ✅ | Doble clic sobre personajes y enemigos para ver estadísticas. |
 | Obstáculos | ✅ | Objetos destruibles con vida, daño, colisión y actualización de navegación. |
@@ -72,8 +74,8 @@ Los nombres mostrados al jugador y sus identificadores de guardado están separa
 | --- | --- | --- |
 | `lumberjack` | AlexLuigui | `audio/voces/Alexluigui.ogg` |
 | `hunter` | Melo | `audio/voces/Melo.ogg` |
-| `engineer` | Loba Herida | `audio/voces/Lobaherida.ogg` |
-| `survivor` | Cristhian | `audio/voces/Cristhian.ogg` |
+| `engineer` | Cristhian | `audio/voices/Cristhian.ogg` |
+| `survivor` | Loba Herida | `audio/voices/Lobaherida.ogg` |
 
 Las voces se reproducen al pasar el cursor, cambiar el foco con teclado/gamepad o seleccionar mediante controles táctiles. El sistema reutiliza un solo reproductor para evitar solapamientos.
 
@@ -116,6 +118,35 @@ Las mejoras se acumulan con límites para preservar el equilibrio. Al maximizar 
 
 La interfaz incluye entrada animada, hover, brillo, partículas, expansión de la carta elegida, flash legendario y audio centralizado.
 
+### Objetos y cartas
+
+#### Objetos del suelo
+
+Los objetos aparecen dinámicamente en la ruta jugable. Al recogerlos, el aviso sobre el personaje muestra la cantidad y el efecto aplicado. Los objetos de inventario se guardan con la partida; no son buffs temporales.
+
+| Objeto | Gráfico | Recompensa / efecto | Duración |
+| --- | :---: | --- | --- |
+| Munición | <img src="assets/world/loot/ammo_world.png" alt="Munición" width="64"> | Añade munición a la reserva. El jugador comienza con un cargador `25/25`; `R` recarga usando la reserva. | Instantáneo; la reserva se conserva |
+| Botiquín | <img src="assets/world/loot/medkit_world.png" alt="Botiquín" width="64"> | Recupera `+1` corazón y, si ya estabas al máximo, aumenta también el máximo acumulable. Límite: `12` corazones. | Instantáneo; los corazones se conservan |
+| Chatarra | <img src="assets/world/loot/scrap_world.png" alt="Chatarra" width="64"> | Añade `+1` unidad al inventario para recursos y fabricación futura. | Permanece en la partida guardada |
+| Materiales | <img src="assets/world/loot/materials_world.png" alt="Materiales" width="64"> | Añade `+1` unidad al inventario. | Permanece en la partida guardada |
+| Comida | <img src="assets/world/loot/food_world.png" alt="Comida" width="64"> | Añade `+1` unidad y concede `+25` puntos. | Puntos instantáneos; unidad guardada |
+| Agua | <img src="assets/world/loot/water_world.png" alt="Agua" width="64"> | Añade `+1` unidad al inventario para supervivencia y sistemas futuros. | Permanece en la partida guardada |
+
+#### Cartas de mejora
+
+Las cartas se acumulan por rangos. Salvo que se indique lo contrario, sus mejoras son permanentes durante la partida y se conservan al cambiar de zona.
+
+| Carta | Gráfico | Efecto | Duración |
+| --- | :---: | --- | --- |
+| Furia | <img src="assets/ui/upgrades/upgrade_fury.png" alt="Carta Furia" width="96"> | Aumenta los puntos por zombie: `+15%` Común, `+25%` Rara, `+40%` Épica, `+75%` Legendaria. | Permanente |
+| Paso Ligero | <img src="assets/ui/upgrades/upgrade_speed.png" alt="Carta Paso Ligero" width="96"> | Aumenta la velocidad: `+10%`, `+18%`, `+30%` o `+50%` según rareza. La Legendaria añade Corredor Fantasma. | Velocidad permanente; intangibilidad Legendaria: `2 s` |
+| Botiquín | <img src="assets/ui/upgrades/upgrade_medkit.png" alt="Carta Botiquín" width="96"> | Recupera `+1`, `+1`, `+2` o `+3` vidas según rareza, sin superar `3`. | Instantáneo |
+| Balas Pesadas | <img src="assets/ui/upgrades/upgrade_heavy.png" alt="Carta Balas Pesadas" width="96"> | Mejora la velocidad de bala: `+15%`, `+30%` o `+50%`. La Legendaria añade `+75%` de cadencia y proyectiles grandes. | Permanente |
+| Loba Herida | <img src="assets/ui/upgrades/upgrade_survivor.png" alt="Carta Loba Herida" width="96"> | Concede invulnerabilidad temporal. | Común `1,5 s` · Rara `3 s` · Épica `5 s` · Legendaria `8 s` |
+
+Los iconos de buff aparecen sobre el jugador mientras el efecto está activo. Los efectos temporales muestran una cuenta atrás; los permanentes permanecen hasta iniciar una nueva partida o reiniciar su progreso.
+
 ### Clima dinámico y ciclo día/noche
 
 El clima tiene efectos de gameplay, no solo visuales:
@@ -141,6 +172,18 @@ resources/climate/ClimateSettings_Pesadilla.tres
 ### Bestiario
 
 El bestiario registra enemigos cuando mueren. Incluye datos como nombre, nivel, vida, ataque, defensa, velocidad, habilidades, descripción, tipo y experiencia otorgada.
+
+### Zonas y progresión
+
+La partida avanza por siete zonas conectadas mediante salidas físicas:
+
+`Bosque → Carretera abandonada → Gasolinera → Pueblo → Hospital → Zona industrial → Base militar`
+
+Cada zona dispone de una escena de configuración en `scenes/world/zones/` con fondo gráfico, límites navegables propios, puntos de aparición, waypoints de enemigos, rutas de recursos, clima inicial, pool de enemigos, preferencias de loot, dos obstáculos gráficos configurables y multiplicador de dificultad. `ResourceSpawner` combina las preferencias de zona con los modificadores meteorológicos sin superar los límites globales.
+
+Antes de las pruebas jugables se puede ejecutar `tools/validate_zones.gd` en modo headless; verifica las siete escenas, recursos gráficos, pools, rutas y configuración navegable.
+
+Las salidas se desbloquean al completar las oleadas 5, 10, 15, 20 y 25. El cambio conserva recursos, mejoras, evoluciones y progreso guardado.
 
 ## Galería
 

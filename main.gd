@@ -5,8 +5,42 @@ const WORLD_SIZE := Vector2(1280, 720)
 const PLAYER_SPEED := 310.0
 const UPGRADE_INTERVAL := 25.0
 const MAX_PARTICLES := 180
-const MAGAZINE_SIZE := 12
+const MAGAZINE_SIZE := 25
+const MAX_LIVES := 12
 const RELOAD_DURATION := 0.85
+const WAVE_BREAK_DURATION := 10.0
+const WAVE_PREPARATION_DURATION := 1.4
+const ZONE_EXIT_WAVES := [5, 10, 15, 20, 25, 30]
+# DEBUG TEMPORAL: mantener al jugador con vida durante las pruebas.
+# Poner en false para recuperar el comportamiento normal.
+const DEBUG_INFINITE_LIVES := true
+const ZONE_DEFINITIONS := [
+	{"id": "forest", "name": "BOSQUE", "scene": "res://scenes/world/zones/forest.tscn", "exit": Vector2(1110, 620)},
+	{"id": "road", "name": "CARRETERA ABANDONADA", "scene": "res://scenes/world/zones/road.tscn", "exit": Vector2(1110, 620)},
+	{"id": "gas_station", "name": "GASOLINERA", "scene": "res://scenes/world/zones/gas_station.tscn", "exit": Vector2(1110, 620)},
+	{"id": "town", "name": "PUEBLO", "scene": "res://scenes/world/zones/town.tscn", "exit": Vector2(1110, 620)},
+	{"id": "hospital", "name": "HOSPITAL", "scene": "res://scenes/world/zones/hospital.tscn", "exit": Vector2(1110, 620)},
+	{"id": "industrial_zone", "name": "ZONA INDUSTRIAL", "scene": "res://scenes/world/zones/industrial_zone.tscn", "exit": Vector2(1110, 620)},
+	{"id": "military_base", "name": "BASE MILITAR", "scene": "res://scenes/world/zones/military_base.tscn", "exit": Vector2(1110, 620)}
+]
+const ZONE_BACKDROP_PATHS := [
+	"res://assets/world/zones/forest_backdrop.jpg",
+	"res://assets/world/zones/road_backdrop.jpg",
+	"res://assets/world/zones/gas_station_backdrop.jpg",
+	"res://assets/world/zones/town_backdrop.jpg",
+	"res://assets/world/zones/hospital_backdrop.jpg",
+	"res://assets/world/zones/industrial_backdrop.jpg",
+	"res://assets/world/zones/military_base_backdrop.jpg"
+]
+const ZONE_BACKDROP_TEXTURES := [
+	preload("res://assets/world/zones/forest_backdrop.jpg"),
+	preload("res://assets/world/zones/road_backdrop.jpg"),
+	preload("res://assets/world/zones/gas_station_backdrop.jpg"),
+	preload("res://assets/world/zones/town_backdrop.jpg"),
+	preload("res://assets/world/zones/hospital_backdrop.jpg"),
+	preload("res://assets/world/zones/industrial_backdrop.jpg"),
+	preload("res://assets/world/zones/military_base_backdrop.jpg")
+]
 ## Reduce la presión inicial sin alterar el escalado de las oleadas avanzadas.
 ## La oleada 5 recupera exactamente la velocidad anterior.
 const EARLY_WAVE_SPEED_MULTIPLIERS := {
@@ -24,6 +58,13 @@ const VIRTUAL_JOYSTICK_SCRIPT := preload("res://scripts/ui/virtual_joystick.gd")
 const LOADING_ATMOSPHERE_SCRIPT := preload("res://scripts/ui/loading_screen.gd")
 const BUFF_INDICATOR_SCENE := preload("res://scenes/ui/BuffIndicator.tscn")
 const RESOURCE_SPAWNER_SCRIPT := preload("res://scripts/world/resource_spawner.gd")
+const ZOMBIE_SCENE_RESOURCE := preload("res://scenes/enemies/zombie.tscn")
+const FOREST_RUNNER_SHEET := preload("res://assets/zombies/animated/Zombie_forest_skinned_runner.png")
+const INFECTED_LUMBERJACK_SHEET := preload("res://assets/zombies/animated/Zombie_infected_lumberjack.png")
+const FOREST_BEAST_SHEET := preload("res://assets/zombies/animated/Zombie_forest_beast.png")
+const MENU_LOGO_TEXTURE := preload("res://assets/ui/menu_logo.png")
+const MENU_BUTTON_FRAME_TEXTURE := preload("res://assets/ui/menu_button_frame.png")
+const CHARACTER_CARD_FRAME_TEXTURE := preload("res://assets/ui/character_card_frame.png")
 const UPGRADE_BUFF_IDS := {
 	"heavy": "ammo",
 	"fury": "damage",
@@ -49,6 +90,20 @@ var navigation_region: NavigationRegion2D
 var world_parallax: ParallaxBackground
 var world_camera: Camera2D
 var world_backdrop: Sprite2D
+var zone_exit_sprite: Sprite2D
+var zone_signature_prop: Sprite2D
+var zone_signature_object: Node2D
+var zone_secondary_signature_object: Node2D
+
+const ZONE_RESOURCE_ROUTES := [
+	{"start": Vector2(960, 180), "end": Vector2(520, 610)},
+	{"start": Vector2(1040, 205), "end": Vector2(500, 570)},
+	{"start": Vector2(950, 300), "end": Vector2(610, 610)},
+	{"start": Vector2(1010, 170), "end": Vector2(470, 620)},
+	{"start": Vector2(970, 250), "end": Vector2(560, 610)},
+	{"start": Vector2(1040, 150), "end": Vector2(520, 620)},
+	{"start": Vector2(1020, 230), "end": Vector2(600, 620)}
+]
 var world_tilemap: TileMapLayer
 var world_decor_layer: TileMapLayer
 var road_spawn_points: Array[Vector2] = []
@@ -69,6 +124,7 @@ var kills := 0
 var wave := 0
 var combo := 0
 var lives := 3
+var max_lives := 3
 var damage_cooldown := 0.0
 var spawn_protection := 0.0
 var player_speed := PLAYER_SPEED
@@ -78,6 +134,9 @@ var fire_rate_multiplier := 1.0
 var bullet_size_multiplier := 1.0
 var shoot_cooldown := 0.0
 var ammo_in_magazine := MAGAZINE_SIZE
+var ammo_capacity := MAGAZINE_SIZE
+var ammo_reserve := 0
+var ammo_supply_timer := 0.0
 var reload_timer := 0.0
 var weapon_reloading := false
 var protection_timer := 0.0
@@ -103,6 +162,15 @@ var upgrade_card_textures: Dictionary = {}
 var upgrade_float_time := 0.0
 var wave_timer := 0.0
 var spawn_timer := 0.0
+var wave_state := "combat"
+var wave_break_timer := 0.0
+var wave_preparation_timer := 0.0
+var wave_enemy_target := 0
+var wave_spawned_count := 0
+var zone_index := 0
+var zone_exit_unlocked := false
+var zone_transition_message := ""
+var active_zone_definition: ZoneDefinition
 var flash_timer := 0.0
 var game_time := 0.0
 var weather := "soleado"
@@ -136,6 +204,7 @@ var settings_button: Button
 var exit_button: Button
 var stats_button: Button
 var character_buttons: Array[Button] = []
+var character_card_frames: Array[TextureRect] = []
 var character_highlight: Panel
 var selected_character := -1
 var character_voice_armed := false
@@ -143,6 +212,7 @@ var menu_message: Label
 var leaderboard_label: Label
 var hud: CanvasLayer
 var score_label: Label
+var zone_label: Label
 var wave_label: Label
 var record_label: Label
 var lives_label: Label
@@ -158,6 +228,7 @@ var upgrade_buttons: Array[Button] = []
 var overlay: ColorRect
 var title_label: Label
 var title_glow_label: Label
+var title_logo: TextureRect
 var menu_background: TextureRect
 var storm_effect
 var subtitle_label: Label
@@ -222,7 +293,7 @@ func _ready() -> void:
 	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	get_viewport().size_changed.connect(_on_viewport_size_changed)
 	audio_manager = get_node_or_null("/root/AudioManager")
-	zombie_scene = load("res://scenes/enemies/zombie.tscn") as PackedScene
+	zombie_scene = ZOMBIE_SCENE_RESOURCE
 	bestiary_scene = load("res://scenes/ui/bestiary.tscn") as PackedScene
 	climate_controller = get_node_or_null("ClimateManager") as ClimateManager
 	if climate_controller != null:
@@ -230,7 +301,7 @@ func _ready() -> void:
 	rng.randomize()
 	enemy_data_list = ENEMY_DATABASE_SCRIPT.all()
 	zombie_sheet = load("res://assets/zombies/zombie_types_12.png") as Texture2D
-	var animated_zombie_names := ["worker", "police", "soldier", "construction", "scientist", "nurse", "civilian", "burned", "toxic", "mutant", "armored", "runner"]
+	var animated_zombie_names := ["worker", "police", "soldier", "construction", "scientist", "nurse", "civilian", "burned", "toxic", "mutant", "armored", "runner", "forest_skinned_runner", "infected_lumberjack", "forest_beast"]
 	for zombie_name in animated_zombie_names:
 		var animated_texture: Texture2D = load("res://assets/zombies/animated/Zombie_%s.png" % zombie_name) as Texture2D
 		zombie_animation_sheets.append(animated_texture)
@@ -245,6 +316,7 @@ func _ready() -> void:
 	_build_menu()
 	_build_hud()
 	_build_touch_controls()
+	_load_active_zone_definition()
 	_build_props()
 	_build_world_parallax()
 	_build_world_camera()
@@ -271,6 +343,17 @@ func _ready() -> void:
 	resource_spawner = RESOURCE_SPAWNER_SCRIPT.new()
 	resource_spawner.name = "ResourceSpawner"
 	add_child(resource_spawner)
+	_apply_zone_route()
+	zone_exit_sprite = Sprite2D.new()
+	zone_exit_sprite.name = "ZoneExitBeacon"
+	var initial_exit_path := "res://assets/world/zones/zone_exit.png"
+	if is_instance_valid(active_zone_definition) and not active_zone_definition.exit_sprite_path.is_empty():
+		initial_exit_path = active_zone_definition.exit_sprite_path
+	zone_exit_sprite.texture = load(initial_exit_path) as Texture2D
+	zone_exit_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	zone_exit_sprite.z_index = 11
+	zone_exit_sprite.visible = false
+	add_child(zone_exit_sprite)
 	queue_redraw()
 	if is_instance_valid(audio_manager):
 		audio_manager.call("start_menu_music")
@@ -364,9 +447,12 @@ func _process(delta: float) -> void:
 		reload_timer = maxf(0.0, reload_timer - delta)
 		if reload_timer <= 0.0:
 			weapon_reloading = false
-			ammo_in_magazine = MAGAZINE_SIZE
+			var ammo_needed := ammo_capacity - ammo_in_magazine
+			var ammo_loaded := mini(ammo_needed, ammo_reserve)
+			ammo_in_magazine += ammo_loaded
+			ammo_reserve -= ammo_loaded
 			if mode == "playing" and status_label != null:
-				status_label.text = "ARMA LISTA"
+				status_label.text = "ARMA LISTA · %02d/%02d" % [ammo_in_magazine, ammo_capacity]
 			_update_hud()
 	_update_weather(delta)
 	_update_visibility_overlay()
@@ -382,8 +468,10 @@ func _process(delta: float) -> void:
 		if is_instance_valid(touch_menu_button):
 			touch_menu_button.visible = _web_mobile_controls_available() and mode == "game_over"
 	if mode == "playing":
+		_update_zone_exit_visual()
 		if is_instance_valid(resource_spawner):
 			resource_spawner.set_weather(weather)
+			_ensure_ammo_supply(delta)
 			resource_spawner.tick(delta, player_pos, props, zombies)
 		_update_game(delta)
 		_update_player_sprite()
@@ -401,16 +489,16 @@ func _process(delta: float) -> void:
 	elif mode == "game_over":
 		_update_particles(delta)
 		queue_redraw()
-	if mode == "menu" and title_label != null:
+	if mode == "menu" and title_logo != null:
 		var pulse := 0.88 + 0.12 * sin(game_time * 2.0)
 		var reveal: float = 1.0
 		if storm_effect != null:
 			reveal = float(storm_effect.get_logo_alpha())
-		title_label.modulate = Color(0.88, 0.98, 1.0, pulse * reveal)
+		title_logo.modulate = Color(0.88, 0.98, 1.0, pulse * reveal)
 		if title_glow_label != null:
 			title_glow_label.modulate = Color(0.2, 0.78, 1.0, (0.16 + pulse * 0.10) * reveal)
 		if storm_effect != null and storm_effect.flash_strength > 0.0:
-			title_label.modulate = Color(1.0, 1.0, 1.0, 1.0)
+			title_logo.modulate = Color(1.0, 1.0, 1.0, 1.0)
 			if title_glow_label != null:
 				title_glow_label.modulate = Color(0.65, 0.92, 1.0, 0.55)
 	if settings_panel != null and settings_panel.visible:
@@ -502,7 +590,9 @@ func _phase_duration(phase_name: String) -> float:
 func _set_day_phase(next_phase: String, announce := true) -> void:
 	day_phase = next_phase
 	day_phase_timer = _phase_duration(next_phase)
-	var phase_weather := "noche" if next_phase == "noche" else ("nublado" if next_phase in ["amanecer", "atardecer"] else "soleado")
+	# Cada fase debe notarse también en el escenario, no solo en el texto del HUD.
+	# La tarde baja ligeramente la luz antes del atardecer y la noche.
+	var phase_weather := "noche" if next_phase == "noche" else ("nublado" if next_phase in ["amanecer", "tarde", "atardecer"] else "soleado")
 	_set_weather(phase_weather, announce)
 	if announce and mode == "playing" and status_label != null:
 		var phase_names := {"amanecer": "AMANECE", "mañana": "MAÑANA", "tarde": "TARDE", "atardecer": "ATARDECE", "noche": "NOCHE"}
@@ -548,6 +638,37 @@ func _set_weather(next_weather: String, announce: bool = true) -> void:
 		status_label.text = "CLIMA: %s" % str(weather_names.get(next_weather, next_weather.to_upper()))
 		if next_weather == "noche":
 			status_label.text = "Ha caído la noche. Los infectados son más peligrosos."
+
+func _zone_start_weather() -> String:
+	if is_instance_valid(active_zone_definition) and not active_zone_definition.weather_bias.is_empty():
+		var candidates := active_zone_definition.weather_bias
+		return str(candidates[rng.randi_range(0, candidates.size() - 1)])
+	return "soleado"
+
+func _zone_difficulty_multiplier() -> float:
+	if is_instance_valid(active_zone_definition):
+		return active_zone_definition.difficulty_multiplier
+	return 1.0
+
+func _zone_enemy_index() -> int:
+	if is_instance_valid(active_zone_definition) and not active_zone_definition.enemy_pool.is_empty():
+		var valid_pool_indices: Array[int] = []
+		for enemy_id_value in active_zone_definition.enemy_pool:
+			var enemy_id := str(enemy_id_value)
+			for index in range(enemy_data_list.size()):
+				if str(enemy_data_list[index].id) == enemy_id:
+					valid_pool_indices.append(index)
+					break
+		if not valid_pool_indices.is_empty():
+			return valid_pool_indices[rng.randi_range(0, valid_pool_indices.size() - 1)]
+	return rng.randi_range(0, enemy_data_list.size() - 1)
+
+func _zone_resource_kind(default_kind: String) -> String:
+	if default_kind != "scrap":
+		return default_kind
+	if is_instance_valid(active_zone_definition) and not active_zone_definition.resource_preferences.is_empty():
+		return str(active_zone_definition.resource_preferences[rng.randi_range(0, active_zone_definition.resource_preferences.size() - 1)])
+	return default_kind
 
 func _maybe_change_weather(force: bool = false) -> void:
 	if not _climate_enabled():
@@ -838,13 +959,13 @@ func _play_scene_transition(callback: Callable, message: String) -> void:
 	scene_transition_label.text = message
 	scene_transition_label.modulate = Color(1.0, 1.0, 1.0, 0.0)
 	var tween := create_tween()
-	tween.tween_property(scene_transition_fade, "color", Color(0.0, 0.0, 0.0, 1.0), 0.36)
-	tween.parallel().tween_property(scene_transition_label, "modulate", Color.WHITE, 0.24)
-	tween.tween_interval(0.10)
+	tween.tween_property(scene_transition_fade, "color", Color(0.0, 0.0, 0.0, 1.0), 0.12)
+	tween.parallel().tween_property(scene_transition_label, "modulate", Color.WHITE, 0.08)
+	tween.tween_interval(0.03)
 	tween.tween_callback(callback)
-	tween.tween_interval(0.12)
-	tween.tween_property(scene_transition_fade, "color", Color(0.0, 0.0, 0.0, 0.0), 0.46)
-	tween.parallel().tween_property(scene_transition_label, "modulate", Color(1.0, 1.0, 1.0, 0.0), 0.24)
+	tween.tween_interval(0.03)
+	tween.tween_property(scene_transition_fade, "color", Color(0.0, 0.0, 0.0, 0.0), 0.16)
+	tween.parallel().tween_property(scene_transition_label, "modulate", Color(1.0, 1.0, 1.0, 0.0), 0.10)
 	tween.tween_callback(func() -> void:
 		scene_transition_busy = false
 		scene_transition_layer.visible = false
@@ -882,21 +1003,24 @@ func _build_menu() -> void:
 	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	layer.add_child(panel)
 
-	title_glow_label = _label(layer, "NOCHE DE LOS INFECTADOS", Vector2(365, 155), 34, Color("267d9c"))
-	title_glow_label.size = Vector2(560, 48)
-	title_glow_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title_glow_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	title_glow_label.add_theme_constant_override("outline_size", 10)
-	title_glow_label.add_theme_color_override("font_outline_color", Color(0.10, 0.58, 0.88, 0.42))
-	title_label = _label(layer, "NOCHE DE LOS INFECTADOS", Vector2(365, 151), 34, Color("e9f1f3"))
-	title_label.size = Vector2(560, 48)
-	title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title_label.add_theme_constant_override("outline_size", 4)
-	title_label.add_theme_color_override("font_outline_color", Color("d9f3f8"))
-	title_label.add_theme_constant_override("shadow_offset_x", 5)
-	title_label.add_theme_constant_override("shadow_offset_y", 8)
-	title_label.add_theme_color_override("font_shadow_color", Color(0.0, 0.02, 0.04, 0.9))
-	subtitle_label = _label(layer, "SOBREVIVE. DISPARA. RECUERDA.", Vector2(365, 205), 14, Color("d34d52"))
+	title_logo = TextureRect.new()
+	title_logo.name = "MenuLogo"
+	title_logo.position = Vector2(330, 58)
+	title_logo.size = Vector2(620, 166)
+	title_logo.texture = MENU_LOGO_TEXTURE
+	title_logo.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	title_logo.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	title_logo.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	title_logo.modulate = Color.WHITE
+	title_logo.z_index = 2
+	layer.add_child(title_logo)
+	# Referencias conservadas para que el resto del menú siga siendo compatible;
+	# el título visible ahora lo proporciona el PNG.
+	title_glow_label = _label(layer, "", Vector2.ZERO, 1, Color.TRANSPARENT)
+	title_glow_label.visible = false
+	title_label = _label(layer, "", Vector2.ZERO, 1, Color.TRANSPARENT)
+	title_label.visible = false
+	subtitle_label = _label(layer, "SOBREVIVE. DISPARA. RECUERDA.", Vector2(365, 232), 14, Color("d34d52"))
 	subtitle_label.size = Vector2(560, 26)
 	subtitle_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	subtitle_label.add_theme_constant_override("outline_size", 2)
@@ -929,26 +1053,27 @@ func _build_menu() -> void:
 	name_input.gui_input.connect(_on_name_input_gui_input)
 	layer.add_child(name_input)
 	character_highlight = Panel.new()
-	character_highlight.position = Vector2(260, 325)
+	character_highlight.position = Vector2(320, 325)
 	character_highlight.visible = selected_character >= 0
 	character_highlight.size = Vector2(160, 200)
 	character_highlight.pivot_offset = character_highlight.size * 0.5
 	character_highlight.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var highlight_style := StyleBoxFlat.new()
 	highlight_style.bg_color = Color(0.0, 0.8, 0.65, 0.04)
-	highlight_style.border_width_left = 3
-	highlight_style.border_width_top = 3
-	highlight_style.border_width_right = 3
-	highlight_style.border_width_bottom = 3
-	highlight_style.border_color = Color("54f5c8")
+	highlight_style.border_width_left = 0
+	highlight_style.border_width_top = 0
+	highlight_style.border_width_right = 0
+	highlight_style.border_width_bottom = 0
+	highlight_style.shadow_color = Color(0.1, 1.0, 0.75, 0.16)
+	highlight_style.shadow_size = 10
 	character_highlight.add_theme_stylebox_override("panel", highlight_style)
 	layer.add_child(character_highlight)
 	if survivor_sheet != null:
 		var survivor_cell := Vector2(survivor_sheet.get_width() / 4.0, survivor_sheet.get_height())
 		for i in range(4):
 			var survivor_view := TextureRect.new()
-			survivor_view.position = Vector2(275 + i * 160, 340)
-			survivor_view.size = Vector2(125, 174)
+			survivor_view.position = Vector2(332 + i * 160, 340)
+			survivor_view.size = Vector2(126, 174)
 			survivor_view.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 			survivor_view.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 			survivor_view.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -959,17 +1084,46 @@ func _build_menu() -> void:
 			layer.add_child(survivor_view)
 	for i in range(4):
 		var character_button := Button.new()
-		character_button.position = Vector2(260 + i * 160, 325)
+		character_button.position = Vector2(320 + i * 160, 325)
 		character_button.size = Vector2(150, 200)
 		character_button.text = ""
-		character_button.flat = true
-		character_button.modulate = Color(1, 1, 1, 0.02)
+		character_button.flat = false
+		character_button.modulate = Color.WHITE
 		character_button.focus_mode = Control.FOCUS_ALL
+		var card_outer := StyleBoxFlat.new()
+		card_outer.bg_color = Color(0.0, 0.0, 0.0, 0.0)
+		card_outer.border_color = Color(0.48, 0.66, 0.70, 0.48)
+		card_outer.set_border_width_all(1)
+		card_outer.set_corner_radius_all(3)
+		card_outer.shadow_color = Color(0.0, 0.0, 0.0, 0.40)
+		card_outer.shadow_size = 4
+		card_outer.shadow_offset = Vector2(0.0, 2.0)
+		var card_hover := card_outer.duplicate()
+		card_hover.border_color = Color("54f5c8")
+		card_hover.set_border_width_all(2)
+		character_button.add_theme_stylebox_override("normal", card_outer)
+		character_button.add_theme_stylebox_override("hover", card_hover)
+		character_button.add_theme_stylebox_override("focus", card_hover)
+		var card_frame := TextureRect.new()
+		card_frame.name = "CharacterCardFrame"
+		card_frame.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		card_frame.texture = CHARACTER_CARD_FRAME_TEXTURE
+		card_frame.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		card_frame.stretch_mode = TextureRect.STRETCH_SCALE
+		card_frame.offset_left = 0.0
+		card_frame.offset_top = 0.0
+		card_frame.offset_right = 0.0
+		card_frame.offset_bottom = 0.0
+		card_frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		card_frame.modulate = Color(0.42, 0.50, 0.56, 0.88)
+		card_frame.z_index = 2
+		character_button.add_child(card_frame)
 		character_button.mouse_entered.connect(_on_character_card_focus.bind(i))
 		character_button.focus_entered.connect(_on_character_card_focus.bind(i))
 		character_button.pressed.connect(_on_character_card_pressed.bind(i))
 		layer.add_child(character_button)
 		character_buttons.append(character_button)
+		character_card_frames.append(card_frame)
 	# Godot puede dar foco al primer Button al construir el menú. Ese foco
 	# inicial no debe reproducir una voz sin interacción del jugador.
 	character_voice_armed = false
@@ -1085,11 +1239,24 @@ func _select_character(index: int) -> void:
 		return
 	var character_changed := index != selected_character
 	selected_character = index
+	for i in range(character_card_frames.size()):
+		var card_frame := character_card_frames[i]
+		if not is_instance_valid(card_frame):
+			continue
+		card_frame.pivot_offset = Vector2(75.0, 100.0)
+		card_frame.scale = Vector2.ONE
+		card_frame.modulate = Color(0.42, 0.50, 0.56, 0.88)
+	if index >= 0 and index < character_card_frames.size():
+		var selected_frame := character_card_frames[index]
+		selected_frame.modulate = Color.WHITE
+		selected_frame.scale = Vector2(1.10, 1.10)
+		var frame_pulse := create_tween()
+		frame_pulse.tween_property(selected_frame, "scale", Vector2.ONE, 0.26).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	# La voz es el sonido de confirmación de la carta. Se elimina el tono
 	# procedural antiguo que se superponía y ocultaba la voz en Web.
 	if character_changed and is_instance_valid(audio_manager):
 		_play_character_voice(index, true)
-	character_highlight.position = Vector2(260 + index * 160, 325)
+	character_highlight.position = Vector2(320 + index * 160, 325)
 	character_highlight.visible = true
 	character_highlight.scale = Vector2(1.08, 1.08)
 	var highlight_pulse := create_tween()
@@ -1551,11 +1718,26 @@ func _normalize_record(value) -> Dictionary:
 		return {
 			"score": int(value.get("score", 0)),
 			"wave": int(value.get("wave", 1)),
+			"current_wave": int(value.get("current_wave", value.get("wave", 1))),
+			"max_lives": int(value.get("max_lives", 3)),
+			"ammo_capacity": int(value.get("ammo_capacity", MAGAZINE_SIZE)),
+			"ammo_reserve": int(value.get("ammo_reserve", 0)),
+			"zone": int(value.get("zone", 0)),
+			"weather": str(value.get("weather", "soleado")),
+			"resources": Dictionary(value.get("resources", {})),
+			"upgrade_levels": Dictionary(value.get("upgrade_levels", {})),
+			"evolution_unlocked": Dictionary(value.get("evolution_unlocked", {})),
+			"evolution_acquired": Dictionary(value.get("evolution_acquired", {})),
+			"score_multiplier": float(value.get("score_multiplier", 1.0)),
+			"projectile_speed_multiplier": float(value.get("projectile_speed_multiplier", 1.0)),
+			"fire_rate_multiplier": float(value.get("fire_rate_multiplier", 1.0)),
+			"bullet_size_multiplier": float(value.get("bullet_size_multiplier", 1.0)),
+			"player_speed": float(value.get("player_speed", 0.0)),
 			"kills": int(value.get("kills", 0)),
 			"plays": int(value.get("plays", 0)),
 			"discovered": Array(value.get("discovered", []))
 		}
-	return {"score": int(value), "wave": 1, "kills": 0, "plays": 0, "discovered": []}
+	return {"score": int(value), "wave": 1, "current_wave": 1, "max_lives": 3, "ammo_capacity": MAGAZINE_SIZE, "ammo_reserve": 0, "zone": 0, "weather": "soleado", "resources": {}, "upgrade_levels": {}, "evolution_unlocked": {}, "evolution_acquired": {}, "score_multiplier": 1.0, "projectile_speed_multiplier": 1.0, "fire_rate_multiplier": 1.0, "bullet_size_multiplier": 1.0, "player_speed": 0.0, "kills": 0, "plays": 0, "discovered": []}
 
 func _current_discovered_ids() -> Array[String]:
 	var result: Array[String] = []
@@ -1587,9 +1769,11 @@ func _build_hud() -> void:
 	visibility_overlay.name = "WeatherVisibilityMask"
 	visibility_overlay.position = Vector2.ZERO
 	visibility_overlay.size = WORLD_SIZE
+	visibility_overlay.color = Color.WHITE
 	visibility_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	visibility_overlay.z_index = -5
 	var visibility_shader := Shader.new()
+	visibility_shader.code = "shader_type canvas_item; uniform sampler2D screen_texture : hint_screen_texture, repeat_disable, filter_linear; uniform vec2 player_uv = vec2(0.5); uniform float visibility = 1.0; uniform float darkness = 0.0; uniform float fog_strength = 0.0; uniform float aspect = 1.777; void fragment() { vec4 scene = texture(screen_texture, SCREEN_UV); vec2 offset = SCREEN_UV - player_uv; offset.x *= aspect; float distance_to_player = length(offset); float fog_radius = mix(0.42, 0.92, visibility); float fog = smoothstep(fog_radius, fog_radius + 0.34, distance_to_player) * fog_strength; float shade = clamp(darkness * 0.64 + fog * 0.76, 0.0, 0.86); vec3 night_tint = vec3(0.025, 0.045, 0.07); COLOR = vec4(mix(scene.rgb, night_tint, shade), 1.0); }"
 	visibility_overlay.material = ShaderMaterial.new()
 	(visibility_overlay.material as ShaderMaterial).shader = visibility_shader
 	hud.add_child(visibility_overlay)
@@ -1599,7 +1783,8 @@ func _build_hud() -> void:
 	top.color = Color(0.03, 0.07, 0.1, 0.86)
 	hud.add_child(top)
 	score_label = _label(hud, "PUNTOS  0", Vector2(44, 32), 23, Color("f0bf6d"))
-	wave_label = _label(hud, "OLEADA  1", Vector2(320, 35), 19, Color("e9f1f3"))
+	zone_label = _label(hud, "ZONA  01", Vector2(300, 36), 14, Color("65e6c4"))
+	wave_label = _label(hud, "OLEADA  01", Vector2(390, 35), 19, Color("e9f1f3"))
 	record_label = _label(hud, "RECORD  0", Vector2(510, 35), 19, Color("85d6c4"))
 	lives_label = _label(hud, "VIDAS", Vector2(705, 35), 19, Color("e85b63"))
 	var heart_texture: Texture2D = load("res://assets/ui/heart.svg") as Texture2D
@@ -1613,9 +1798,11 @@ func _build_hud() -> void:
 		heart.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		hud.add_child(heart)
 		life_icons.append(heart)
-	status_label = _label(hud, "", Vector2(820, 38), 16, Color("d96d6f"))
-	ammo_label = _label(hud, "MUNICIÓN  12/12", Vector2(1045, 38), 15, Color("f0bf6d"))
-	ammo_label.size = Vector2(190, 24)
+	status_label = _label(hud, "", Vector2(360, 76), 15, Color("d96d6f"))
+	status_label.size = Vector2(600, 22)
+	status_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	ammo_label = _label(hud, "MUNICIÓN  25/25 · RES 00", Vector2(995, 38), 15, Color("f0bf6d"))
+	ammo_label.size = Vector2(240, 24)
 	ammo_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	game_over_label = _label(hud, "", Vector2(380, 295), 30, Color("f0bf6d"))
 	game_over_label.size = Vector2(520, 120)
@@ -1720,7 +1907,7 @@ func _on_touch_menu_pressed() -> void:
 	_return_to_menu("Sesion guardada. Elige otro superviviente o vuelve a entrar.")
 
 func _reload_weapon() -> void:
-	if mode != "playing" or weapon_reloading or ammo_in_magazine >= MAGAZINE_SIZE:
+	if mode != "playing" or weapon_reloading or ammo_in_magazine >= ammo_capacity or ammo_reserve <= 0:
 		return
 	weapon_reloading = true
 	reload_timer = RELOAD_DURATION
@@ -1887,24 +2074,61 @@ func _style_menu_button(button: Button, accent: Color, font_size: int) -> void:
 	button.add_theme_color_override("font_color", Color("e9f4f1"))
 	button.add_theme_color_override("font_hover_color", Color.WHITE)
 	button.add_theme_color_override("font_pressed_color", Color.WHITE)
+	button.add_theme_color_override("font_outline_color", Color(0.0, 0.02, 0.03, 0.95))
+	button.add_theme_constant_override("outline_size", 3)
 	var normal := StyleBoxFlat.new()
-	normal.bg_color = Color(0.025, 0.08, 0.1, 0.9)
-	normal.border_color = Color(accent, 0.72)
-	normal.set_border_width_all(2)
-	normal.set_corner_radius_all(8)
+	normal.bg_color = Color(0.008, 0.028, 0.036, 0.96)
+	normal.border_color = Color(0.48, 0.66, 0.70, 0.95)
+	normal.border_width_left = 1
+	normal.border_width_top = 1
+	normal.border_width_right = 1
+	normal.border_width_bottom = 2
+	normal.expand_margin_left = 1.0
+	normal.expand_margin_top = 1.0
+	normal.expand_margin_right = 1.0
+	normal.expand_margin_bottom = 1.0
+	normal.set_corner_radius_all(4)
+	normal.corner_detail = 8
+	normal.shadow_color = Color(0.0, 0.0, 0.0, 0.88)
+	normal.shadow_size = 5
+	normal.shadow_offset = Vector2(0.0, 2.0)
+	normal.content_margin_left = 12
+	normal.content_margin_right = 12
 	normal.content_margin_top = 8
-	normal.content_margin_bottom = 8
+	normal.content_margin_bottom = 9
 	var hover := normal.duplicate()
-	hover.bg_color = Color(accent, 0.28)
+	hover.bg_color = Color(accent, 0.22)
 	hover.border_color = Color(accent, 1.0)
-	hover.set_border_width_all(3)
+	hover.set_border_width_all(2)
+	hover.expand_margin_left = 2.0
+	hover.expand_margin_top = 2.0
+	hover.expand_margin_right = 2.0
+	hover.expand_margin_bottom = 2.0
+	hover.shadow_color = Color(accent, 0.34)
+	hover.shadow_size = 12
 	var pressed := normal.duplicate()
-	pressed.bg_color = Color(accent, 0.45)
+	pressed.bg_color = Color(accent, 0.38)
 	pressed.border_color = Color("effffb")
+	pressed.shadow_color = Color(accent, 0.22)
+	pressed.shadow_size = 4
 	button.add_theme_stylebox_override("normal", normal)
 	button.add_theme_stylebox_override("hover", hover)
 	button.add_theme_stylebox_override("pressed", pressed)
 	button.add_theme_stylebox_override("focus", hover)
+	var metal_frame := TextureRect.new()
+	metal_frame.name = "MetalButtonFrame"
+	metal_frame.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	metal_frame.texture = MENU_BUTTON_FRAME_TEXTURE
+	metal_frame.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	metal_frame.stretch_mode = TextureRect.STRETCH_SCALE
+	metal_frame.offset_left = 0.0
+	metal_frame.offset_top = 0.0
+	metal_frame.offset_right = 0.0
+	metal_frame.offset_bottom = 0.0
+	metal_frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	metal_frame.modulate = Color(0.50, 0.60, 0.64, 0.90)
+	metal_frame.z_index = 2
+	button.add_child(metal_frame)
 	button.mouse_entered.connect(_on_ui_button_hover)
 	button.pressed.connect(_on_ui_button_pressed)
 
@@ -1918,7 +2142,33 @@ func _on_ui_button_pressed() -> void:
 
 func _build_props() -> void:
 	_build_city_tilemap()
+	_apply_zone_route()
 	return
+
+func _load_active_zone_definition() -> void:
+	if is_instance_valid(active_zone_definition):
+		active_zone_definition.free()
+		active_zone_definition = null
+	if zone_index < 0 or zone_index >= ZONE_DEFINITIONS.size():
+		return
+	var zone_scene := load(str(ZONE_DEFINITIONS[zone_index]["scene"])) as PackedScene
+	if zone_scene != null:
+		active_zone_definition = zone_scene.instantiate() as ZoneDefinition
+	if is_instance_valid(zone_exit_sprite) and is_instance_valid(active_zone_definition):
+		zone_exit_sprite.texture = load(active_zone_definition.exit_sprite_path) as Texture2D
+
+func _apply_zone_route() -> void:
+	if not is_instance_valid(resource_spawner):
+		return
+	if is_instance_valid(active_zone_definition):
+		resource_spawner.route_start = active_zone_definition.resource_route_start
+		resource_spawner.route_end = active_zone_definition.resource_route_end
+		resource_spawner.set_zone_preferences(active_zone_definition.resource_preferences)
+		return
+	var route: Dictionary = ZONE_RESOURCE_ROUTES[clampi(zone_index, 0, ZONE_RESOURCE_ROUTES.size() - 1)]
+	resource_spawner.route_start = Vector2(route["start"])
+	resource_spawner.route_end = Vector2(route["end"])
+	resource_spawner.set_zone_preferences(PackedStringArray())
 
 func _build_city_tilemap() -> void:
 	for old_prop in props:
@@ -1932,17 +2182,39 @@ func _build_city_tilemap() -> void:
 		world_decor_layer.queue_free()
 	if is_instance_valid(world_backdrop):
 		world_backdrop.queue_free()
-	var backdrop_texture: Texture2D = load("res://assets/world/urban_city_backdrop.png") as Texture2D
+	if is_instance_valid(zone_signature_object):
+		zone_signature_object.queue_free()
+	if is_instance_valid(zone_secondary_signature_object):
+		zone_secondary_signature_object.queue_free()
+	zone_signature_prop = null
+	var backdrop_path := "res://assets/world/urban_city_backdrop.png"
+	if is_instance_valid(active_zone_definition) and not active_zone_definition.backdrop_path.is_empty():
+		backdrop_path = active_zone_definition.backdrop_path
+	if zone_index >= 0 and zone_index < ZONE_BACKDROP_PATHS.size():
+		backdrop_path = ZONE_BACKDROP_PATHS[zone_index] if not is_instance_valid(active_zone_definition) else backdrop_path
+	var backdrop_texture: Texture2D = null
+	if zone_index >= 0 and zone_index < ZONE_BACKDROP_TEXTURES.size():
+		backdrop_texture = ZONE_BACKDROP_TEXTURES[zone_index] as Texture2D
+	if backdrop_texture == null:
+		backdrop_texture = load(backdrop_path) as Texture2D
+	if backdrop_texture == null:
+		# Fallback para Web/HTML5 si una textura de zona no está disponible.
+		backdrop_texture = load("res://assets/world/urban_city_backdrop.png") as Texture2D
 	if backdrop_texture != null:
 		world_backdrop = Sprite2D.new()
 		world_backdrop.name = "UrbanCityBackdrop"
 		world_backdrop.texture = backdrop_texture
 		world_backdrop.position = Vector2(640, 405)
-		world_backdrop.scale = Vector2(0.714, 0.714)
+		var backdrop_scale := maxf(1280.0 / float(backdrop_texture.get_width()), 720.0 / float(backdrop_texture.get_height()))
+		world_backdrop.scale = Vector2.ONE * backdrop_scale
+		# El escenario siempre queda detrás del dibujo de jugador, zombies,
+		# proyectiles y efectos que pinta main.gd.
 		world_backdrop.z_index = -20
+		world_backdrop.visible = true
 		world_backdrop.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 		add_child(world_backdrop)
 		move_child(world_backdrop, 0)
+	_create_zone_signature_prop()
 	var urban_texture: Texture2D = load("res://assets/world/urban_apocalypse_tileset_clean.png") as Texture2D
 	if urban_texture == null:
 		urban_texture = load("res://assets/world/urban_apocalypse_tileset.png") as Texture2D
@@ -1992,18 +2264,7 @@ func _build_city_tilemap() -> void:
 	world_decor_layer.tile_set = tile_set
 	add_child(world_decor_layer)
 	move_child(world_decor_layer, 2)
-	var decorations := [
-		{"cell": Vector2i(1, 1), "tile": Vector2i(1, 4), "kind": "car", "health": 120.0, "size": Vector2(72, 62), "explosive": true},
-		{"cell": Vector2i(7, 1), "tile": Vector2i(2, 4), "kind": "car", "health": 120.0, "size": Vector2(72, 62), "explosive": true},
-		{"cell": Vector2i(4, 3), "tile": Vector2i(5, 4), "kind": "bus", "health": 260.0, "size": Vector2(116, 70), "explosive": true},
-		{"cell": Vector2i(8, 3), "tile": Vector2i(7, 4), "kind": "bus", "health": 260.0, "size": Vector2(105, 70), "explosive": true},
-		{"cell": Vector2i(2, 0), "tile": Vector2i(0, 5), "kind": "barricade", "health": 80.0, "size": Vector2(90, 36), "explosive": false},
-		{"cell": Vector2i(6, 4), "tile": Vector2i(1, 5), "kind": "barricade", "health": 80.0, "size": Vector2(90, 36), "explosive": false},
-		{"cell": Vector2i(0, 1), "tile": Vector2i(3, 6), "kind": "tree", "health": 90.0, "size": Vector2(70, 70), "explosive": false},
-		{"cell": Vector2i(9, 1), "tile": Vector2i(4, 6), "kind": "tree", "health": 90.0, "size": Vector2(70, 70), "explosive": false},
-		{"cell": Vector2i(9, 0), "tile": Vector2i(7, 7), "kind": "bus_stop", "health": 180.0, "size": Vector2(96, 80), "explosive": false},
-		{"cell": Vector2i(0, 4), "tile": Vector2i(0, 6), "kind": "lamp", "health": 55.0, "size": Vector2(34, 68), "explosive": false}
-	]
+	var decorations: Array[Dictionary] = _zone_decorations()
 	for decoration in decorations:
 		var cell: Vector2i = decoration["cell"]
 		world_decor_layer.set_cell(cell, 0, decoration["tile"])
@@ -2023,6 +2284,103 @@ func _build_city_tilemap() -> void:
 		props.append({"pos": position, "type": 0, "size": 1.0, "node": object, "kind": decoration["kind"], "cell": cell})
 	_build_city_navigation()
 
+func _create_zone_signature_prop() -> void:
+	var atlas_texture := load("res://assets/world/zones/zone_props_atlas_v2.png") as Texture2D
+	if atlas_texture == null:
+		atlas_texture = load("res://assets/world/zones/zone_props_atlas.png") as Texture2D
+	if atlas_texture == null:
+		return
+	var signature_positions := [Vector2(150, 620), Vector2(170, 225), Vector2(300, 270), Vector2(1100, 210), Vector2(155, 250), Vector2(1080, 500), Vector2(1050, 250)]
+	var signature_kinds := ["forest_log", "road_barrier", "gas_canister", "town_mailbox", "hospital_crate", "industrial_drums", "military_sandbags"]
+	var primary_index := clampi(zone_index, 0, signature_positions.size() - 1)
+	zone_signature_object = _create_zone_atlas_obstacle("ZoneSignatureObstacle", signature_positions[primary_index], signature_kinds[primary_index], primary_index, 220.0, Vector2(112, 96), atlas_texture)
+	zone_signature_prop = zone_signature_object.get_node_or_null("ZoneSignatureProp") as Sprite2D
+	if is_instance_valid(active_zone_definition) and active_zone_definition.secondary_prop_region >= 0:
+		var secondary_kind := active_zone_definition.secondary_prop_kind
+		if secondary_kind.is_empty():
+			secondary_kind = "zone_secondary_obstacle"
+		zone_secondary_signature_object = _create_zone_atlas_obstacle(
+			"ZoneSecondarySignatureObstacle",
+			active_zone_definition.secondary_prop_position,
+			secondary_kind,
+			active_zone_definition.secondary_prop_region,
+			active_zone_definition.secondary_prop_health,
+			active_zone_definition.secondary_prop_size,
+			atlas_texture
+		)
+		if not active_zone_definition.secondary_prop_reward.is_empty() and active_zone_definition.secondary_prop_reward_amount > 0:
+			zone_secondary_signature_object.set_meta("zone_reward", active_zone_definition.secondary_prop_reward)
+			zone_secondary_signature_object.set_meta("zone_reward_amount", active_zone_definition.secondary_prop_reward_amount)
+
+func _create_zone_atlas_obstacle(node_name: String, obstacle_position: Vector2, obstacle_kind: String, region_index: int, health: float, obstacle_size: Vector2, atlas_texture: Texture2D) -> Node2D:
+	var obstacle_object = DESTRUCTIBLE_OBJECT_SCRIPT.new()
+	obstacle_object.name = node_name
+	obstacle_object.position = obstacle_position
+	obstacle_object.setup(obstacle_kind, health, obstacle_size, false)
+	obstacle_object.damaged.connect(_on_prop_damaged)
+	obstacle_object.destroyed.connect(_on_prop_destroyed)
+	add_child(obstacle_object)
+	var obstacle_sprite := Sprite2D.new()
+	obstacle_sprite.name = "ZoneSignatureProp"
+	obstacle_sprite.texture = atlas_texture
+	obstacle_sprite.region_enabled = true
+	var safe_region := clampi(region_index, 0, 7)
+	var atlas_cell_size := float(atlas_texture.get_width()) / 4.0
+	obstacle_sprite.region_rect = Rect2((safe_region % 4) * atlas_cell_size, (safe_region / 4) * atlas_cell_size, atlas_cell_size, atlas_cell_size)
+	obstacle_sprite.position = Vector2.ZERO
+	obstacle_sprite.scale = Vector2.ONE * 0.22
+	obstacle_sprite.z_index = 1
+	obstacle_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+	obstacle_object.add_child(obstacle_sprite)
+	var signature_obstacle := NavigationObstacle2D.new()
+	signature_obstacle.name = "NavigationObstacle"
+	signature_obstacle.avoidance_enabled = true
+	signature_obstacle.radius = maxf(obstacle_size.x, obstacle_size.y) * 0.5
+	obstacle_object.add_child(signature_obstacle)
+	props.append({"pos": obstacle_object.position, "type": 0, "size": 1.0, "node": obstacle_object, "kind": obstacle_kind, "cell": Vector2i(-1, -1)})
+	return obstacle_object
+
+func _zone_decorations() -> Array[Dictionary]:
+	# Cada zona conserva un corredor central libre, pero cambia sus elementos,
+	# silueta y obstáculos laterales. Así el fondo y la jugabilidad cuentan la
+	# misma historia sin depender de cientos de nodos colocados manualmente.
+	var common := {
+		"car": {"tile": Vector2i(1, 4), "health": 120.0, "size": Vector2(72, 62), "explosive": true},
+		"car_alt": {"tile": Vector2i(2, 4), "health": 120.0, "size": Vector2(72, 62), "explosive": true},
+		"bus": {"tile": Vector2i(5, 4), "health": 260.0, "size": Vector2(116, 70), "explosive": true},
+		"bus_alt": {"tile": Vector2i(7, 4), "health": 260.0, "size": Vector2(105, 70), "explosive": true},
+		"barricade": {"tile": Vector2i(0, 5), "health": 80.0, "size": Vector2(90, 36), "explosive": false},
+		"barricade_alt": {"tile": Vector2i(1, 5), "health": 80.0, "size": Vector2(90, 36), "explosive": false},
+		"tree": {"tile": Vector2i(3, 6), "health": 90.0, "size": Vector2(70, 70), "explosive": false},
+		"tree_alt": {"tile": Vector2i(4, 6), "health": 90.0, "size": Vector2(70, 70), "explosive": false},
+		"bus_stop": {"tile": Vector2i(7, 7), "health": 180.0, "size": Vector2(96, 80), "explosive": false},
+		"lamp": {"tile": Vector2i(0, 6), "health": 55.0, "size": Vector2(34, 68), "explosive": false}
+	}
+	var layouts: Array[Array] = [
+		# Bosque: árboles y barricadas en los márgenes.
+		[[Vector2i(0, 1), "tree"], [Vector2i(9, 1), "tree_alt"], [Vector2i(0, 3), "tree_alt"], [Vector2i(9, 3), "tree"], [Vector2i(2, 0), "barricade"], [Vector2i(7, 4), "barricade_alt"]],
+		# Carretera: vehículos abandonados y cortes de tráfico.
+		[[Vector2i(1, 1), "car"], [Vector2i(8, 1), "car_alt"], [Vector2i(3, 4), "bus"], [Vector2i(8, 3), "bus_alt"], [Vector2i(2, 0), "barricade"], [Vector2i(6, 4), "barricade_alt"]],
+		# Gasolinera: vehículos, surtidor/puesto y focos laterales.
+		[[Vector2i(1, 1), "car_alt"], [Vector2i(7, 1), "car"], [Vector2i(8, 0), "bus_stop"], [Vector2i(0, 4), "lamp"], [Vector2i(9, 4), "lamp"], [Vector2i(2, 0), "barricade"]],
+		# Pueblo: mezcla irregular de casas, coches y vegetación.
+		[[Vector2i(1, 1), "tree"], [Vector2i(8, 1), "tree_alt"], [Vector2i(2, 3), "car"], [Vector2i(7, 3), "car_alt"], [Vector2i(9, 0), "bus_stop"], [Vector2i(4, 4), "barricade_alt"]],
+		# Hospital: acceso bloqueado, parada y luces de emergencia.
+		[[Vector2i(0, 1), "bus_stop"], [Vector2i(9, 1), "bus_stop"], [Vector2i(2, 4), "car"], [Vector2i(7, 4), "car_alt"], [Vector2i(1, 0), "lamp"], [Vector2i(8, 0), "barricade"]],
+		# Zona industrial: autobuses y barreras pesadas en los extremos.
+		[[Vector2i(1, 1), "bus"], [Vector2i(8, 1), "bus_alt"], [Vector2i(0, 4), "car"], [Vector2i(9, 4), "car_alt"], [Vector2i(3, 0), "barricade"], [Vector2i(6, 4), "barricade_alt"]],
+		# Base militar: perímetro defensivo, focos y vehículos de transporte.
+		[[Vector2i(0, 1), "barricade"], [Vector2i(9, 1), "barricade_alt"], [Vector2i(1, 4), "bus"], [Vector2i(8, 4), "bus_alt"], [Vector2i(2, 0), "lamp"], [Vector2i(7, 0), "lamp"]]
+	]
+	var selected: Array = layouts[clampi(zone_index, 0, layouts.size() - 1)]
+	var result: Array[Dictionary] = []
+	for entry in selected:
+		var cell: Vector2i = entry[0]
+		var kind: String = entry[1]
+		var data: Dictionary = common[kind]
+		result.append({"cell": cell, "tile": data["tile"], "kind": kind.replace("_alt", ""), "health": data["health"], "size": data["size"], "explosive": data["explosive"]})
+	return result
+
 func _on_city_object_destroyed(object, cell: Vector2i) -> void:
 	if is_instance_valid(world_decor_layer):
 		world_decor_layer.erase_cell(cell)
@@ -2034,10 +2392,13 @@ func _build_city_navigation() -> void:
 	navigation_region = NavigationRegion2D.new()
 	navigation_region.name = "UrbanNavigationRegion"
 	var navigation_polygon := NavigationPolygon.new()
-	navigation_polygon.vertices = PackedVector2Array([
+	var boundary := PackedVector2Array([
 		Vector2(24, 126), Vector2(1256, 126), Vector2(1256, 704), Vector2(24, 704)
 	])
-	navigation_polygon.add_polygon(PackedInt32Array([0, 1, 2, 3]))
+	if is_instance_valid(active_zone_definition) and active_zone_definition.navigation_boundary.size() >= 3:
+		boundary = active_zone_definition.navigation_boundary
+	navigation_polygon.add_outline(boundary)
+	navigation_polygon.make_polygons_from_outlines()
 	navigation_region.navigation_polygon = navigation_polygon
 	add_child(navigation_region)
 	move_child(navigation_region, 0)
@@ -2048,10 +2409,36 @@ func _build_road_spawn_points() -> void:
 		if child.name.begins_with("RoadSpawnPoint"):
 			child.queue_free()
 	road_spawn_points.clear()
-	# Puntos fuera de la pantalla, en la entrada superior de la carretera.
-	# La ruta desciende desde la ciudad del fondo hacia el centro del mapa.
-	road_spawn_points = [Vector2(1010, 72), Vector2(1085, 60), Vector2(1160, 48)]
-	road_waypoints = [Vector2(970, 150), Vector2(880, 235), Vector2(780, 315), Vector2(690, 370)]
+	var spawn_routes: Array[Dictionary] = [
+		{"spawn": [Vector2(980, 72), Vector2(1080, 62), Vector2(1180, 52)], "waypoints": [Vector2(930, 145), Vector2(830, 230), Vector2(730, 315), Vector2(650, 380)]},
+		{"spawn": [Vector2(1000, 58), Vector2(1100, 48), Vector2(1200, 38)], "waypoints": [Vector2(950, 135), Vector2(875, 215), Vector2(795, 295), Vector2(710, 365)]},
+		{"spawn": [Vector2(930, 150), Vector2(1080, 125), Vector2(1190, 105)], "waypoints": [Vector2(900, 215), Vector2(820, 285), Vector2(740, 350), Vector2(665, 405)]},
+		{"spawn": [Vector2(1040, 55), Vector2(1140, 70), Vector2(1210, 90)], "waypoints": [Vector2(980, 145), Vector2(900, 225), Vector2(805, 305), Vector2(710, 375)]},
+		{"spawn": [Vector2(970, 95), Vector2(1080, 85), Vector2(1190, 72)], "waypoints": [Vector2(930, 175), Vector2(850, 250), Vector2(770, 325), Vector2(690, 395)]},
+		{"spawn": [Vector2(1000, 45), Vector2(1110, 55), Vector2(1220, 65)], "waypoints": [Vector2(970, 125), Vector2(890, 205), Vector2(810, 285), Vector2(730, 365)]},
+		{"spawn": [Vector2(945, 120), Vector2(1060, 105), Vector2(1175, 90)], "waypoints": [Vector2(920, 195), Vector2(835, 265), Vector2(750, 335), Vector2(665, 400)]}
+	]
+	road_waypoints.clear()
+	if is_instance_valid(active_zone_definition) and not active_zone_definition.enemy_spawn_points.is_empty():
+		for spawn_position in active_zone_definition.enemy_spawn_points:
+			road_spawn_points.append(Vector2(spawn_position))
+		if not active_zone_definition.enemy_waypoints.is_empty():
+			for waypoint in active_zone_definition.enemy_waypoints:
+				road_waypoints.append(Vector2(waypoint))
+		else:
+			road_waypoints = [Vector2(970, 150), Vector2(880, 235), Vector2(780, 315), Vector2(690, 370)]
+		for i in range(road_spawn_points.size()):
+			var configured_spawn := Node2D.new()
+			configured_spawn.name = "RoadSpawnPoint_%02d" % (i + 1)
+			configured_spawn.position = road_spawn_points[i]
+			configured_spawn.set_meta("route", "main_road")
+			add_child(configured_spawn)
+		return
+	var route: Dictionary = spawn_routes[clampi(zone_index, 0, spawn_routes.size() - 1)]
+	for spawn_position in route["spawn"]:
+		road_spawn_points.append(Vector2(spawn_position))
+	for waypoint in route["waypoints"]:
+		road_waypoints.append(Vector2(waypoint))
 	for i in range(road_spawn_points.size()):
 		var spawn_point := Node2D.new()
 		spawn_point.name = "RoadSpawnPoint_%02d" % (i + 1)
@@ -2122,6 +2509,10 @@ func _on_prop_destroyed(object) -> void:
 	_spawn_burst(object.global_position, Color("6f4b36"), 10)
 	if was_explosive:
 		_explode_vehicle(object.global_position)
+	if object.has_meta("zone_reward") and is_instance_valid(resource_spawner):
+		var reward_kind := str(object.get_meta("zone_reward"))
+		var reward_amount := maxi(1, int(object.get_meta("zone_reward_amount", 1)))
+		resource_spawner.request_spawn(reward_amount, reward_kind)
 	queue_redraw()
 
 func _explode_vehicle(center: Vector2) -> void:
@@ -2261,6 +2652,25 @@ func _start_game_after_transition() -> void:
 		return
 	menu_message.visible = false
 	var player_stats := _normalize_record(records.get(username, {}))
+	var has_saved_progress := int(player_stats.get("plays", 0)) > 0 and (
+		int(player_stats.get("zone", 0)) > 0 or
+		int(player_stats.get("current_wave", 1)) > 1 or
+		not Dictionary(player_stats.get("resources", {})).is_empty() or
+		not Dictionary(player_stats.get("upgrade_levels", {})).is_empty() or
+		not Dictionary(player_stats.get("evolution_acquired", {})).is_empty()
+	)
+	var resume_zone := clampi(int(player_stats.get("zone", 0)), 0, ZONE_DEFINITIONS.size() - 1) if has_saved_progress else 0
+	var resume_wave := maxi(1, int(player_stats.get("current_wave", 1))) if has_saved_progress else 1
+	var resume_weather := str(player_stats.get("weather", "soleado")) if has_saved_progress else "soleado"
+	var resume_resources: Dictionary = Dictionary(player_stats.get("resources", {})).duplicate(true) if has_saved_progress else {}
+	var resume_upgrade_levels: Dictionary = Dictionary(player_stats.get("upgrade_levels", {})).duplicate(true) if has_saved_progress else {}
+	var resume_evolution_unlocked: Dictionary = Dictionary(player_stats.get("evolution_unlocked", {})).duplicate(true) if has_saved_progress else {}
+	var resume_evolution_acquired: Dictionary = Dictionary(player_stats.get("evolution_acquired", {})).duplicate(true) if has_saved_progress else {}
+	var resume_score_multiplier := float(player_stats.get("score_multiplier", 1.0)) if has_saved_progress else 1.0
+	var resume_projectile_speed_multiplier := float(player_stats.get("projectile_speed_multiplier", 1.0)) if has_saved_progress else 1.0
+	var resume_fire_rate_multiplier := float(player_stats.get("fire_rate_multiplier", 1.0)) if has_saved_progress else 1.0
+	var resume_bullet_size_multiplier := float(player_stats.get("bullet_size_multiplier", 1.0)) if has_saved_progress else 1.0
+	var resume_player_speed := float(player_stats.get("player_speed", 0.0)) if has_saved_progress else 0.0
 	player_stats["plays"] = int(player_stats["plays"]) + 1
 	records[username] = player_stats
 	_write_records()
@@ -2272,30 +2682,47 @@ func _start_game_after_transition() -> void:
 	touch_shoot_pressed = false
 	weapon_reloading = false
 	reload_timer = 0.0
-	ammo_in_magazine = MAGAZINE_SIZE
+	max_lives = clampi(int(player_stats.get("max_lives", 3)), 3, MAX_LIVES) if has_saved_progress else 3
+	lives = max_lives
+	var saved_ammo_capacity := int(player_stats.get("ammo_capacity", MAGAZINE_SIZE)) if has_saved_progress else MAGAZINE_SIZE
+	ammo_capacity = maxi(MAGAZINE_SIZE, saved_ammo_capacity)
+	ammo_reserve = maxi(0, int(player_stats.get("ammo_reserve", 0))) if has_saved_progress else 0
+	ammo_in_magazine = ammo_capacity
 	player_moving = false
 	player_facing = Vector2.DOWN
 	player_dead = false
-	score = 0
-	kills = 0
+	score = int(player_stats.get("score", 0)) if has_saved_progress else 0
+	kills = int(player_stats.get("kills", 0)) if has_saved_progress else 0
 	combo = 0
-	lives = 3
+	max_lives = 3
+	lives = max_lives
 	damage_cooldown = 0.0
 	spawn_protection = 3.0
 	player_speed = character_data_list[selected_character].speed
 	player_base_speed = player_speed
-	score_multiplier = 1.0
-	projectile_speed_multiplier = 1.0
-	fire_rate_multiplier = 1.0
-	bullet_size_multiplier = 1.0
+	score_multiplier = resume_score_multiplier
+	projectile_speed_multiplier = resume_projectile_speed_multiplier
+	fire_rate_multiplier = resume_fire_rate_multiplier
+	bullet_size_multiplier = resume_bullet_size_multiplier
+	if resume_player_speed > 0.0:
+		player_speed = maxf(player_base_speed, resume_player_speed)
 	protection_timer = 0.0
 	phase_timer = 0.0
-	upgrade_levels.clear()
-	evolution_unlocked.clear()
-	evolution_acquired.clear()
+	upgrade_levels = resume_upgrade_levels
+	evolution_unlocked = resume_evolution_unlocked
+	evolution_acquired = resume_evolution_acquired
 	upgrade_timer = 0.0
 	upgrade_pending = false
-	wave = 1
+	wave = resume_wave
+	wave_state = "combat"
+	wave_break_timer = 0.0
+	wave_preparation_timer = 0.0
+	wave_enemy_target = 0
+	wave_spawned_count = 0
+	zone_index = resume_zone
+	_load_active_zone_definition()
+	zone_exit_unlocked = false
+	zone_transition_message = ""
 	spawn_serial = 0
 	_build_props()
 	wave_timer = 0.0
@@ -2315,7 +2742,11 @@ func _start_game_after_transition() -> void:
 	lightning_wave_radius = 0.0
 	lightning_wave_alpha = 0.0
 	resource_inventory = {"ammo": 0, "medkit": 0, "scrap": 0, "materials": 0, "food": 0, "water": 0}
-	_set_weather("soleado", false)
+	ammo_supply_timer = 4.0
+	for resource_key in resume_resources.keys():
+		if resource_inventory.has(str(resource_key)):
+			resource_inventory[str(resource_key)] = maxi(0, int(resume_resources[resource_key]))
+	_set_weather(resume_weather if has_saved_progress else _zone_start_weather(), false)
 	player_pos = Vector2(640, 405)
 	if is_instance_valid(buff_indicator):
 		buff_indicator.clear_buffs()
@@ -2371,25 +2802,45 @@ func _update_game(delta: float) -> void:
 	if Input.is_action_just_pressed("shoot") or touch_shoot_pressed:
 		_shoot()
 	_update_bullets(delta)
-	_update_zombies(delta)
 	_update_particles(delta)
-	upgrade_timer += delta
-	if upgrade_timer >= UPGRADE_INTERVAL:
-		_show_upgrade_choices()
-		return
-	spawn_timer -= delta
-	if spawn_timer <= 0.0 and zombies.size() < 15 + wave * 3:
-		_spawn_zombie()
-		spawn_timer = maxf(0.18, 0.65 - wave * 0.035)
-	wave_timer += delta
-	if wave_timer >= 28.0:
-		wave += 1
-		wave_timer = 0.0
-		combo = 0
-		_maybe_change_weather(false)
-		_build_props()
-		_spawn_wave()
+	if wave_state == "combat":
+		_update_zombies(delta)
+		upgrade_timer += delta
+		if upgrade_timer >= UPGRADE_INTERVAL:
+			_show_upgrade_choices()
+			return
+	else:
+		_update_wave_flow(delta)
 	_update_hud()
+
+func _update_wave_flow(delta: float) -> void:
+	if wave_state == "break":
+		wave_break_timer = maxf(0.0, wave_break_timer - delta)
+		if wave_break_timer > 0.0:
+			status_label.text = "OLEADA SUPERADA · SIGUIENTE EN %02d" % ceili(wave_break_timer)
+			return
+		if zone_exit_unlocked:
+			wave_state = "exit"
+			var zone_name := str(ZONE_DEFINITIONS[zone_index]["name"])
+			status_label.text = "SALIDA DESBLOQUEADA · VE A %s" % zone_name
+			_update_zone_exit_visual()
+			return
+		wave_state = "preparing"
+		wave_preparation_timer = WAVE_PREPARATION_DURATION
+		status_label.text = "PREPARANDO OLEADA %02d" % (wave + 1)
+	elif wave_state == "preparing":
+		wave_preparation_timer = maxf(0.0, wave_preparation_timer - delta)
+		if wave_preparation_timer <= 0.0:
+			wave += 1
+			combo = 0
+			upgrade_timer = 0.0
+			_maybe_change_weather(false)
+			_build_props()
+			_spawn_wave()
+	elif wave_state == "exit":
+		var exit_position := _current_zone_exit_position()
+		if player_pos.distance_to(exit_position) <= 110.0:
+			_advance_to_next_zone()
 
 func _get_touch_aim_position() -> Vector2:
 	var closest_position := player_pos + player_facing * 100.0
@@ -2407,7 +2858,7 @@ func _shoot() -> void:
 		return
 	if ammo_in_magazine <= 0:
 		if status_label != null:
-			status_label.text = "SIN MUNICIÓN · PULSA R"
+			status_label.text = "SIN MUNICIÓN · PULSA R" if ammo_reserve > 0 else "SIN MUNICIÓN · RECOGE MUNICIÓN"
 		return
 	if shoot_cooldown > 0.0:
 		return
@@ -2418,7 +2869,7 @@ func _shoot() -> void:
 	shoot_cooldown = 0.12 / maxf(1.0, fire_rate_multiplier)
 	ammo_in_magazine -= 1
 	if ammo_in_magazine <= 0 and status_label != null:
-		status_label.text = "SIN MUNICIÓN · PULSA R"
+		status_label.text = "SIN MUNICIÓN · PULSA R" if ammo_reserve > 0 else "SIN MUNICIÓN · RECOGE MUNICIÓN"
 	_update_hud()
 	flash_timer = 0.08
 	if is_instance_valid(audio_manager):
@@ -2445,6 +2896,9 @@ func _update_bullets(delta: float) -> void:
 				var zombie: Dictionary = zombies[j]
 				var zombie_node = zombie.get("node")
 				if is_instance_valid(zombie_node) and not zombie_node.is_dead and bullet["pos"].distance_to(zombie["pos"]) < float(zombie["radius"]) + float(bullet.get("radius", 8.0)):
+					zombie["hurt_timer"] = 0.16
+					zombie["animation_row"] = 3
+					zombies[j] = zombie
 					zombie_node.take_damage(25.0 * score_multiplier)
 					if is_instance_valid(audio_manager):
 						audio_manager.call("play_game_event", "zombie_hit")
@@ -2459,9 +2913,14 @@ func _update_zombies(delta: float) -> void:
 	for i in range(zombies.size() - 1, -1, -1):
 		var zombie: Dictionary = zombies[i]
 		var zombie_node = zombie.get("node")
+		# Si un nodo se libera sin emitir la señal de muerte, no debe bloquear
+		# para siempre la oleada ni dejar un registro invisible en el array.
 		if not is_instance_valid(zombie_node) or zombie_node.is_dead:
+			zombies.remove_at(i)
 			continue
 		var distance: float = zombie["pos"].distance_to(player_pos)
+		zombie["hurt_timer"] = maxf(0.0, float(zombie.get("hurt_timer", 0.0)) - delta)
+		zombie["attack_timer"] = maxf(0.0, float(zombie.get("attack_timer", 0.0)) - delta)
 		var speed := float(zombie["speed"]) * (1.0 + wave * 0.035) * _early_wave_speed_multiplier() * _weather_zombie_speed()
 		var route_target := player_pos
 		var route_index := int(zombie.get("road_target_index", -1))
@@ -2478,23 +2937,37 @@ func _update_zombies(delta: float) -> void:
 		var next_zombie_pos: Vector2 = zombie["pos"] + desired * speed * delta
 		zombie["pos"] = _move_with_obstacles(zombie["pos"], next_zombie_pos, float(zombie["radius"]) * 0.72)
 		zombie["phase"] = float(zombie["phase"]) + delta * 5.0
+		if float(zombie.get("hurt_timer", 0.0)) > 0.0:
+			zombie["animation_row"] = 3
+		elif is_instance_valid(zombie_node) and zombie_node.is_dead:
+			zombie["animation_row"] = 4
+		elif float(zombie.get("attack_timer", 0.0)) > 0.0:
+			zombie["animation_row"] = 2
+		else:
+			zombie["animation_row"] = 1 if speed > 0.1 else 0
 		zombie_node.position = zombie["pos"]
 		if distance < 30.0 and spawn_protection <= 0.0 and protection_timer <= 0.0 and phase_timer <= 0.0:
+			zombie["attack_timer"] = 0.24
+			zombie["animation_row"] = 2
 			if damage_cooldown > 0.0:
 				continue
-			lives -= 1
 			var attack_multiplier := float(zombie.get("attack_multiplier", 1.0))
-			# La noche aumenta el daño efectivo: el contacto vuelve antes a ser peligroso
-			# y aplica una penalización de puntuación ligeramente mayor.
-			damage_cooldown = maxf(0.55, 1.0 / attack_multiplier)
-			score = maxi(0, score - int(25.0 * attack_multiplier))
-			combo = 0
-			_spawn_burst(player_pos, Color("e0b17a"), 8)
-			if is_instance_valid(audio_manager):
-				audio_manager.call("play_game_event", "player_damage")
-			if lives <= 0:
-				_end_game()
-				return
+			if not DEBUG_INFINITE_LIVES:
+				lives -= 1
+				# La noche aumenta el daño efectivo: el contacto vuelve antes a ser peligroso
+				# y aplica una penalización de puntuación ligeramente mayor.
+				damage_cooldown = maxf(0.55, 1.0 / attack_multiplier)
+				score = maxi(0, score - int(25.0 * attack_multiplier))
+				combo = 0
+				_spawn_burst(player_pos, Color("e0b17a"), 8)
+				if is_instance_valid(audio_manager):
+					audio_manager.call("play_game_event", "player_damage")
+				if lives <= 0:
+					_end_game()
+					return
+			else:
+				# La colisión sigue separando al infectado, pero no consume vidas.
+				lives = max_lives
 			# El zombie sigue vivo tras golpear al jugador: se separa para que
 			# permanezca visible y pueda volver a perseguirlo.
 			var push_direction := player_pos.direction_to(zombie["pos"])
@@ -2505,6 +2978,8 @@ func _update_zombies(delta: float) -> void:
 			zombies[i] = zombie
 		else:
 			zombies[i] = zombie
+	if wave_state == "combat" and wave_spawned_count > 0 and zombies.is_empty() and wave_spawned_count >= wave_enemy_target:
+		_complete_wave()
 
 func _move_with_obstacles(from: Vector2, target: Vector2, radius: float) -> Vector2:
 	var result := target
@@ -2530,19 +3005,52 @@ func _move_with_obstacles(from: Vector2, target: Vector2, radius: float) -> Vect
 	return result
 
 func _steer_around_obstacles(position: Vector2, desired: Vector2) -> Vector2:
-	var result := desired
-	for prop in props:
-		var object = prop.get("node")
-		if not is_instance_valid(object) or object.destroyed_state:
-			continue
-		var rect: Rect2 = object.collision_rect().grow(38.0)
-		if rect.has_point(position + desired * 48.0):
-			var to_left := Vector2(-desired.y, desired.x)
-			var to_right := -to_left
-			var left_score := rect.get_center().distance_to(position + to_left * 55.0)
-			var right_score := rect.get_center().distance_to(position + to_right * 55.0)
-			result = (to_left if left_score > right_score else to_right).lerp(desired, 0.35).normalized()
-	return result
+	if desired.length_squared() < 0.01:
+		return desired
+	var forward := desired.normalized()
+	var left := Vector2(-forward.y, forward.x)
+	var right := -left
+	# Primero se intenta avanzar; si hay un obstáculo, se prueban ambos lados
+	# y diagonales para evitar que el infectado quede pegado a una esquina.
+	var candidates: Array[Vector2] = [
+		forward,
+		(forward + left * 1.35).normalized(),
+		(forward + right * 1.35).normalized(),
+		left,
+		right
+	]
+	var best := forward
+	var best_score := -INF
+	for candidate in candidates:
+		var blocked := false
+		for prop in props:
+			var object = prop.get("node")
+			if not is_instance_valid(object) or object.destroyed_state:
+				continue
+			var rect: Rect2 = object.collision_rect().grow(34.0)
+			if rect.has_point(position + candidate * 82.0) or rect.has_point(position + candidate * 42.0):
+				blocked = true
+				break
+		if not blocked:
+			var score := candidate.dot(forward)
+			if score > best_score:
+				best_score = score
+				best = candidate
+	return best
+
+func _ensure_ammo_supply(delta: float) -> void:
+	if not is_instance_valid(resource_spawner):
+		return
+	ammo_supply_timer = maxf(0.0, ammo_supply_timer - delta)
+	if ammo_in_magazine + ammo_reserve > 8 or ammo_supply_timer > 0.0:
+		return
+	for pickup in resource_spawner.get_active_pickups():
+		if pickup.resource_id == "ammo":
+			return
+	# Garantía de jugabilidad: con poca munición siempre se solicita una caja
+	# si no existe ninguna activa. El límite global del spawner sigue vigente.
+	resource_spawner.request_spawn(1, "ammo")
+	ammo_supply_timer = 8.0
 
 func _on_zombie_died(zombie_node) -> void:
 	for i in range(zombies.size() - 1, -1, -1):
@@ -2550,27 +3058,72 @@ func _on_zombie_died(zombie_node) -> void:
 		if zombie.get("node") != zombie_node:
 			continue
 		var pos: Vector2 = zombie["pos"]
-		var value := int((100 + wave * 25 + combo * 10) * score_multiplier)
+		var enemy_data: EnemyData = zombie.get("data") as EnemyData
+		var enemy_base_value := 100
+		if enemy_data != null:
+			# La puntuación depende de la amenaza real del enemigo: vida,
+			# ataque y experiencia. Los jefes y variantes resistentes valen más.
+			enemy_base_value = clampi(
+				int(enemy_data.max_health * 0.45 + enemy_data.attack_power * 4.0 + enemy_data.experience_reward * 6.0),
+				60,
+				650
+			)
+		var value := int((enemy_base_value + wave * 10 + combo * 10) * score_multiplier)
 		combo += 1
 		kills += 1
 		score += value
+		floating_effects.append({
+			"pos": pos + Vector2(0.0, -54.0),
+			"text": "+%d" % value,
+			"color": Color("f0bf6d"),
+			"life": 0.85,
+			"kind": "score"
+		})
 		_spawn_burst(pos, Color("bb2938"), 16)
 		_spawn_burst(pos, Color("f0bf6d"), 4)
 		if is_instance_valid(audio_manager):
 			audio_manager.call("play_game_event", "zombie_death")
 		_unlock_enemy_type(int(zombie["type"]))
 		zombies.remove_at(i)
+		if wave_state == "combat" and zombies.is_empty() and wave_spawned_count >= wave_enemy_target:
+			_complete_wave()
 		return
+
+func _complete_wave() -> void:
+	if wave_state != "combat":
+		return
+	wave_state = "break"
+	wave_break_timer = WAVE_BREAK_DURATION
+	wave_preparation_timer = 0.0
+	zone_exit_unlocked = wave in ZONE_EXIT_WAVES
+	zone_transition_message = "OLEADA SUPERADA"
+	status_label.text = "OLEADA SUPERADA"
+	if not username.is_empty():
+		_save_record()
+	if is_instance_valid(audio_manager):
+		audio_manager.call("play_game_event", "wave")
+	_update_hud()
 
 func _unlock_enemy_type(enemy_index: int) -> void:
 	if enemy_index >= 0 and enemy_index < enemy_data_list.size():
 		_on_enemy_discovered(enemy_data_list[enemy_index])
 
 func _spawn_wave() -> void:
-	for i in range(3 + wave * 2):
+	wave_state = "combat"
+	var base_enemy_target := 3 + wave * 2
+	wave_enemy_target = maxi(1, int(round(float(base_enemy_target) * _zone_difficulty_multiplier())))
+	wave_spawned_count = 0
+	zone_exit_unlocked = false
+	zone_transition_message = ""
+	for i in range(wave_enemy_target):
 		_spawn_zombie()
 	_spawn_climate_resources()
-	status_label.text = "OLEADA %d: LA NOCHE EMPEORA" % wave
+	if wave_spawned_count == 0:
+		push_error("[WAVE] No se pudo generar ningún enemigo en la oleada %d; se detiene el avance automático." % wave)
+		wave_state = "combat"
+		status_label.text = "ERROR: NO SE PUDIERON GENERAR ENEMIGOS"
+		return
+	status_label.text = ("OLEADA %d: LA NOCHE EMPEORA" % wave) if day_phase == "noche" else ("OLEADA %d: LOS INFECTADOS AVANZAN" % wave)
 	if is_instance_valid(audio_manager):
 		audio_manager.call("play_game_event", "wave")
 
@@ -2599,6 +3152,7 @@ func _spawn_climate_resources() -> void:
 		resource_kind = "water"
 	elif weather == "ceniza_toxica":
 		resource_kind = "materials"
+	resource_kind = _zone_resource_kind(resource_kind)
 	resource_spawner.set_weather(weather)
 	resource_spawner.request_spawn(count, resource_kind)
 
@@ -2611,20 +3165,32 @@ func _collect_climate_resources() -> void:
 		_collect_resource_pickup(pickup)
 
 func _collect_resource_pickup(pickup: PickupItem) -> void:
-	var resource_kind := pickup.resource_id
+	var resource_kind := pickup.resource_id.to_lower().strip_edges()
 	var amount := pickup.amount
 	resource_inventory[resource_kind] = int(resource_inventory.get(resource_kind, 0)) + amount
+	var pickup_message := "%s +%d" % [_resource_display_name(resource_kind), amount]
 	match resource_kind:
 		"ammo":
-			ammo_in_magazine = mini(MAGAZINE_SIZE, ammo_in_magazine + amount)
+			ammo_reserve += amount
+			pickup_message = "MUNICIÓN +%d · RESERVA %02d" % [amount, ammo_reserve]
 		"medkit":
-			lives = mini(3, lives + amount)
+			max_lives = mini(MAX_LIVES, max_lives + amount)
+			lives = mini(max_lives, lives + amount)
+			_ensure_life_icons()
+			pickup_message = "BOTIQUÍN +%d · CORAZONES %d" % [amount, lives]
 		"food":
 			score += 25 * amount
+			pickup_message = "COMIDA +%d · PUNTOS +%d" % [amount, 25 * amount]
+		"water":
+			pickup_message = "AGUA +%d" % amount
+		"scrap":
+			pickup_message = "CHATARRA +%d" % amount
+		"materials":
+			pickup_message = "MATERIALES +%d" % amount
 	_spawn_burst(pickup.position, Color("71d7c2"), 16)
-	_spawn_upgrade_world_effect("%s +%d" % [_resource_display_name(resource_kind), amount], Color("71d7c2"))
+	_spawn_resource_pickup_effect(pickup_message, Color("71d7c2"))
 	if status_label != null:
-		status_label.text = "RECURSO: %s +%d" % [_resource_display_name(resource_kind), amount]
+		status_label.text = pickup_message
 	if is_instance_valid(audio_manager):
 		audio_manager.call("play_game_event", "pickup")
 	if is_instance_valid(resource_spawner):
@@ -2644,22 +3210,34 @@ func _resource_display_name(resource_kind: String) -> String:
 func _spawn_zombie() -> void:
 	if road_spawn_points.is_empty():
 		_build_road_spawn_points()
-	var spawn_index := spawn_serial % road_spawn_points.size()
+	var p := road_spawn_points[spawn_serial % road_spawn_points.size()]
 	spawn_serial += 1
-	var p := road_spawn_points[spawn_index] + Vector2(rng.randf_range(-16.0, 16.0), rng.randf_range(-8.0, 8.0))
-	var zombie_type := rng.randi_range(0, enemy_data_list.size() - 1)
+	# Los puntos definidos por una zona pueden quedar cerca de un prop grande.
+	# Probamos varios puntos y no permitimos crear un zombie dentro de una
+	# colisión, donde el movimiento quedaría bloqueado desde el primer frame.
+	for attempt in range(road_spawn_points.size() * 3):
+		var candidate_index := (spawn_serial + attempt) % road_spawn_points.size()
+		var candidate := road_spawn_points[candidate_index] + Vector2(rng.randf_range(-16.0, 16.0), rng.randf_range(-8.0, 8.0))
+		if _is_valid_zombie_spawn(candidate):
+			p = candidate
+			break
+	var zombie_type := _zone_enemy_index()
 	var data = enemy_data_list[zombie_type]
 	var night_bonus := _night_bonus_for_enemy(data)
-	var zombie_node = zombie_scene.instantiate() if zombie_scene != null else null
+	var zone_bonus := _zone_difficulty_multiplier() - 1.0
+	var zombie_node = zombie_scene.instantiate() if zombie_scene != null else ZOMBIE_SCENE_RESOURCE.instantiate()
 	if zombie_node == null:
+		push_error("[WAVE] zombie.tscn no pudo instanciarse en la oleada %d." % wave)
 		return
 	zombie_node.setup(data)
-	if night_bonus > 0.0:
-		var night_health := float(data.max_health) * (1.0 + night_bonus)
-		zombie_node.current_health = night_health
+	zombie_node.modulate = data.visual_tint
+	var health_multiplier := 1.0 + night_bonus + zone_bonus * 0.55
+	if health_multiplier > 1.0:
+		var scaled_health := float(data.max_health) * health_multiplier
+		zombie_node.current_health = scaled_health
 		if zombie_node.health_bar != null:
-			zombie_node.health_bar.max_value = night_health
-			zombie_node.health_bar.value = night_health
+			zombie_node.health_bar.max_value = scaled_health
+			zombie_node.health_bar.value = scaled_health
 	zombie_node.position = p
 	zombie_node.died.connect(_on_zombie_died)
 	add_child(zombie_node)
@@ -2668,7 +3246,78 @@ func _spawn_zombie() -> void:
 		# En niebla entran algo más cerca, pero siguen llegando por la carretera.
 		spawn_pos = p.lerp(player_pos, 0.12)
 		zombie_node.position = spawn_pos
-	zombies.append({"pos": spawn_pos, "speed": data.speed, "radius": rng.randf_range(17.0, 24.0), "phase": rng.randf_range(0.0, 6.0), "type": zombie_type, "node": zombie_node, "data": data, "road_target_index": 0, "attack_multiplier": 1.0 + night_bonus})
+	zombies.append({"pos": spawn_pos, "speed": float(data.speed) * (1.0 + zone_bonus * 0.18), "radius": rng.randf_range(17.0, 24.0), "phase": rng.randf_range(0.0, 6.0), "type": zombie_type, "node": zombie_node, "data": data, "road_target_index": 0, "attack_multiplier": 1.0 + night_bonus + zone_bonus * 0.25, "animation_row": 1, "hurt_timer": 0.0, "attack_timer": 0.0})
+	wave_spawned_count += 1
+
+func _is_valid_zombie_spawn(candidate: Vector2) -> bool:
+	if candidate.x < 40.0 or candidate.x > 1240.0 or candidate.y < 130.0 or candidate.y > 690.0:
+		return false
+	for prop in props:
+		var object = prop.get("node")
+		if is_instance_valid(object) and not object.destroyed_state:
+			if object.collision_rect().grow(48.0).has_point(candidate):
+				return false
+	return true
+
+func _current_zone_exit_position() -> Vector2:
+	if is_instance_valid(active_zone_definition):
+		return active_zone_definition.exit_position
+	if zone_index < 0 or zone_index >= ZONE_DEFINITIONS.size():
+		return Vector2(1110, 620)
+	return Vector2(ZONE_DEFINITIONS[zone_index]["exit"])
+
+func _advance_to_next_zone() -> void:
+	if not zone_exit_unlocked:
+		return
+	if scene_transition_busy:
+		return
+	if zone_index >= ZONE_DEFINITIONS.size() - 1:
+		zone_exit_unlocked = false
+		_update_zone_exit_visual()
+		status_label.text = "HAS ALCANZADO LA BASE MILITAR"
+		return
+	# La salida confirma el cambio de forma determinista. Mostramos una pantalla
+	# breve de carga para que el jugador sepa que la zona está cambiando.
+	scene_transition_busy = true
+	if scene_transition_layer != null:
+		scene_transition_layer.visible = true
+		scene_transition_fade.color = Color(0.0, 0.0, 0.0, 1.0)
+		scene_transition_label.text = "CARGANDO MAPA..."
+		scene_transition_label.modulate = Color.WHITE
+		get_tree().create_timer(0.35).timeout.connect(_finish_zone_transition, CONNECT_ONE_SHOT)
+	else:
+		_finish_zone_transition()
+
+func _finish_zone_transition() -> void:
+	_commit_zone_transition()
+	scene_transition_busy = false
+	if scene_transition_layer != null:
+		scene_transition_layer.visible = false
+
+func _commit_zone_transition() -> void:
+	zone_index += 1
+	_load_active_zone_definition()
+	zone_exit_unlocked = false
+	_update_zone_exit_visual()
+	wave = 1
+	wave_timer = 0.0
+	spawn_timer = 0.0
+	wave_break_timer = 0.0
+	wave_preparation_timer = 0.0
+	combo = 0
+	player_pos = Vector2(640, 405)
+	_build_props()
+	_set_weather(_zone_start_weather(), false)
+	status_label.text = "ZONA DESBLOQUEADA: %s" % str(ZONE_DEFINITIONS[zone_index]["name"])
+	_spawn_wave()
+	_save_record()
+
+func _update_zone_exit_visual() -> void:
+	if not is_instance_valid(zone_exit_sprite):
+		return
+	zone_exit_sprite.visible = wave_state == "exit" and zone_exit_unlocked
+	zone_exit_sprite.position = _current_zone_exit_position()
+	zone_exit_sprite.scale = Vector2.ONE * 0.18
 
 func _spawn_burst(pos: Vector2, color: Color, amount: int) -> void:
 	for i in range(amount):
@@ -2700,22 +3349,60 @@ func _spawn_upgrade_world_effect(title: String, color: Color) -> void:
 		"pos": player_pos + Vector2(0.0, -82.0),
 		"text": "+ %s" % title,
 		"color": color,
-		"life": 1.35
+		"life": 1.35,
+		"kind": "upgrade"
+	})
+
+func _spawn_resource_pickup_effect(title: String, color: Color) -> void:
+	# Solo dejamos un aviso de recurso activo; recoger otro actualiza el anterior.
+	for i in range(floating_effects.size() - 1, -1, -1):
+		if str(floating_effects[i].get("kind", "")) == "resource_pickup":
+			floating_effects.remove_at(i)
+	floating_effects.append({
+		"pos": player_pos + Vector2(0.0, -82.0),
+		"text": title,
+		"color": color,
+		"life": 1.35,
+		"kind": "resource_pickup"
 	})
 
 func _update_hud() -> void:
 	score_label.text = "PUNTOS  %06d" % score
+	if zone_label != null:
+		zone_label.text = "ZONA  %02d" % (zone_index + 1)
 	wave_label.text = "OLEADA  %02d" % wave
 	record_label.text = "RECORD  %06d" % int(_normalize_record(records.get(username, {}))["score"])
 	if ammo_label != null:
-		ammo_label.text = "MUNICIÓN  %02d/%02d" % [ammo_in_magazine, MAGAZINE_SIZE]
+		ammo_label.text = "MUNICIÓN  %02d/%02d · RES %02d" % [ammo_in_magazine, ammo_capacity, ammo_reserve]
 		ammo_label.modulate = Color("e85b63") if ammo_in_magazine == 0 else Color("f0bf6d")
 	# Iconos SVG para que las vidas se vean igual en escritorio y Web.
 	lives_label.text = "VIDAS"
+	_ensure_life_icons()
 	for i in range(life_icons.size()):
 		life_icons[i].modulate = Color.WHITE if i < lives else Color(0.22, 0.25, 0.28, 0.85)
 	if combo > 1:
 		status_label.text = "COMBO x%d   +%d" % [combo, combo * 10]
+
+func _ensure_life_icons() -> void:
+	if hud == null:
+		return
+	var heart_texture: Texture2D = load("res://assets/ui/heart.svg") as Texture2D
+	while life_icons.size() < max_lives:
+		var heart := TextureRect.new()
+		heart.position = Vector2(770 + life_icons.size() * 16, 42)
+		heart.size = Vector2(13, 12)
+		heart.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		heart.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		heart.texture = heart_texture
+		heart.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		hud.add_child(heart)
+		life_icons.append(heart)
+	for i in range(life_icons.size()):
+		var column := i % 5
+		var row := i / 5
+		life_icons[i].position = Vector2(770 + column * 16, 42 + row * 14)
+	if status_label != null:
+		status_label.position = Vector2(360, 76)
 
 func _roll_upgrade_rarity(base: Dictionary, allow_legendary: bool = true) -> Dictionary:
 	var result: Dictionary = base.duplicate()
@@ -2743,7 +3430,7 @@ func _upgrade_is_available(upgrade_id: String) -> bool:
 	if not UPGRADE_MAX_LEVELS.has(upgrade_id):
 		return false
 	if upgrade_id == "medkit":
-		return lives < 3 and int(upgrade_levels.get(upgrade_id, 0)) < int(UPGRADE_MAX_LEVELS[upgrade_id])
+		return lives < max_lives and int(upgrade_levels.get(upgrade_id, 0)) < int(UPGRADE_MAX_LEVELS[upgrade_id])
 	return int(upgrade_levels.get(upgrade_id, 0)) < int(UPGRADE_MAX_LEVELS[upgrade_id])
 
 func _unlock_evolution(upgrade_id: String) -> void:
@@ -2915,7 +3602,10 @@ func _choose_upgrade(index: int) -> void:
 	var applied_level := _apply_upgrade(selected)
 	var buff_id := str(UPGRADE_BUFF_IDS.get(selected_base_id, ""))
 	if not buff_id.is_empty():
-		apply_player_buff(buff_id)
+		var buff_duration := -1.0
+		if selected_base_id == "survivor":
+			buff_duration = float({"COMÚN": 1.5, "RARA": 3.0, "ÉPICA": 5.0, "LEGENDARIA": 8.0}.get(str(selected["rarity"]), 1.5))
+		apply_player_buff(buff_id, buff_duration)
 	var max_level := int(UPGRADE_MAX_LEVELS.get(selected_base_id, MAX_UPGRADE_LEVEL))
 	var reached_max := not bool(selected.get("evolution", false)) and applied_level >= max_level
 	if is_instance_valid(audio_manager):
@@ -3000,10 +3690,10 @@ func _apply_upgrade(selected: Dictionary) -> int:
 				phase_timer = maxf(phase_timer, 2.0)
 		"medkit":
 			var healing: int = int({"COMÚN": 1, "RARA": 1, "ÉPICA": 2, "LEGENDARIA": 3}.get(rarity, 1))
-			lives = mini(3, lives + int(healing))
+			lives = mini(max_lives, lives + int(healing))
 			if rarity == "LEGENDARIA":
-				# Curacion completa dentro del limite maximo de vidas.
-				lives = 3
+				# Curación completa dentro del máximo de corazones acumulados.
+				lives = max_lives
 		"heavy":
 			if rarity == "LEGENDARIA":
 				fire_rate_multiplier = minf(4.0, fire_rate_multiplier * 1.75)
@@ -3035,7 +3725,7 @@ func _apply_evolution(selected: Dictionary) -> void:
 			player_speed = minf(player_base_speed * 1.85, player_speed * 1.10)
 			phase_timer = maxf(phase_timer, 3.0)
 		"medkit":
-			lives = 3
+			lives = max_lives
 		"heavy":
 			fire_rate_multiplier = minf(4.0, fire_rate_multiplier * 1.25)
 			bullet_size_multiplier = minf(2.5, bullet_size_multiplier * 1.15)
@@ -3086,6 +3776,8 @@ func _draw() -> void:
 			continue
 		_draw_zombie(zombie)
 	draw_circle(player_pos + Vector2(0, 28), 24, Color(0.0, 0.0, 0.0, 0.32))
+	if wave_state == "exit" and zone_exit_unlocked:
+		_draw_zone_exit()
 	for particle in particles:
 		var alpha: float = clampf(float(particle["life"]) * 1.5, 0.0, 1.0)
 		var color: Color = particle["color"]
@@ -3104,12 +3796,28 @@ func _draw() -> void:
 		draw_circle(player_pos + player_pos.direction_to(aim_pos) * 33.0, 14.0, Color(1.0, 0.83, 0.43, flash_timer * 8.0))
 	_draw_weather_effects()
 
+func _draw_zone_exit() -> void:
+	var exit_position := _current_zone_exit_position()
+	var pulse := 1.0 + sin(game_time * 3.0) * 0.12
+	var distance_to_exit := player_pos.distance_to(exit_position)
+	draw_circle(exit_position, 34.0 * pulse, Color(0.18, 0.85, 0.76, 0.10))
+	draw_arc(exit_position, 28.0 * pulse, 0.0, TAU, 28, Color(0.35, 1.0, 0.86, 0.95), 3.0)
+	draw_line(exit_position + Vector2(-13, 0), exit_position + Vector2(13, 0), Color("b7fff0"), 3.0)
+	draw_line(exit_position + Vector2(0, -13), exit_position + Vector2(0, 13), Color("b7fff0"), 3.0)
+	draw_string(ThemeDB.fallback_font, exit_position + Vector2(-105.0, -44.0), "SALIDA · ENTRA AQUÍ", HORIZONTAL_ALIGNMENT_CENTER, 210.0, 16, Color("d9fff7"))
+	var prompt := "ENTRA EN LA SALIDA" if distance_to_exit <= 150.0 else "VE A LA SALIDA"
+	draw_string(ThemeDB.fallback_font, player_pos + Vector2(-120.0, -58.0), prompt, HORIZONTAL_ALIGNMENT_CENTER, 240.0, 15, Color("b7fff0"))
+
 func _draw_weather_effects() -> void:
 	if weather_darkness > 0.0:
-		draw_rect(Rect2(Vector2.ZERO, WORLD_SIZE), Color(0.015, 0.025, 0.055, weather_darkness * 0.18))
+		var darkness_alpha := weather_darkness * 0.28
+		if weather == "noche":
+			darkness_alpha = maxf(darkness_alpha, 0.38)
+		draw_rect(Rect2(Vector2.ZERO, WORLD_SIZE), Color(0.008, 0.018, 0.045, darkness_alpha))
 	if weather == "noche":
-		# Halo ambiental tenue para conservar legibilidad del jugador.
-		draw_circle(player_pos, 150.0, Color(0.24, 0.34, 0.40, 0.055))
+		# La visibilidad nocturna la controla la máscara de pantalla; no se dibuja
+		# ningún círculo alrededor del jugador.
+		pass
 	if weather_rain_strength > 0.0:
 		for i in range(58):
 			var x := fmod(float(i * 83) + game_time * 145.0, WORLD_SIZE.x)
@@ -3154,9 +3862,10 @@ func draw_weather_ellipse(center: Vector2, radius: Vector2, color: Color) -> voi
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 func _draw_ground(_danger: float) -> void:
-	# El suelo ya no se dibuja con primitivas: UrbanGroundTileMap es la fuente
-	# visual única del escenario y evita la antigua cuadrícula azul.
-	return
+	# Fondo de seguridad únicamente si no se pudo cargar el backdrop de la zona.
+	# El escenario cargado queda detrás de este Node2D y no debe ser tapado.
+	if not is_instance_valid(world_backdrop):
+		draw_rect(Rect2(Vector2.ZERO, WORLD_SIZE), Color("101820"), true)
 
 func _draw_prop(prop: Dictionary, danger: float) -> void:
 	var p: Vector2 = prop["pos"]
@@ -3253,6 +3962,10 @@ func _draw_zombie(zombie: Dictionary) -> void:
 	var radius: float = zombie["radius"]
 	var sway := sin(float(zombie["phase"])) * 3.0
 	var zombie_type: int = int(zombie["type"])
+	var sprite_index := zombie_type
+	var zombie_data = zombie.get("data")
+	if zombie_data != null:
+		sprite_index = int(zombie_data.sprite_index)
 	var zombie_node = zombie.get("node")
 	var visual_scale: Vector2 = Vector2.ONE
 	var visual_modulate: Color = Color.WHITE
@@ -3260,14 +3973,24 @@ func _draw_zombie(zombie: Dictionary) -> void:
 		visual_scale = zombie_node.scale
 		visual_modulate = zombie_node.modulate
 	var animated_sheet: Texture2D = null
-	if zombie_type >= 0 and zombie_type < zombie_animation_sheets.size():
-		animated_sheet = zombie_animation_sheets[zombie_type]
+	if sprite_index >= 0 and sprite_index < zombie_animation_sheets.size():
+		animated_sheet = zombie_animation_sheets[sprite_index]
+	if zombie_data != null:
+		match str(zombie_data.id):
+			"forest_skinned_runner": animated_sheet = FOREST_RUNNER_SHEET
+			"infected_lumberjack": animated_sheet = INFECTED_LUMBERJACK_SHEET
+			"forest_beast": animated_sheet = FOREST_BEAST_SHEET
 	if animated_sheet != null:
 		var destination_size: Vector2 = Vector2(radius * 3.4, radius * 3.4) * visual_scale
 		var draw_position := p + Vector2(-destination_size.x * 0.5, -destination_size.y * 0.62 + sway)
 		var cell_size := Vector2(animated_sheet.get_width() / 8.0, animated_sheet.get_height() / 5.0)
-		var walk_frame: int = floori(float(zombie["phase"]) * 1.6) % 8
-		var source_rect := Rect2(Vector2(walk_frame * cell_size.x, cell_size.y), cell_size)
+		var animation_row := clampi(int(zombie.get("animation_row", 1)), 0, 4)
+		if is_instance_valid(zombie_node) and zombie_node.is_dead:
+			animation_row = 4
+		# Las hojas de los enemigos nuevos usan 4 fotogramas de hurt y 8 en el resto.
+		var animation_frame_count := 4 if animation_row == 3 else 8
+		var animation_frame: int = floori(float(zombie["phase"]) * (2.2 if animation_row == 1 else 1.6)) % animation_frame_count
+		var source_rect := Rect2(Vector2(animation_frame * cell_size.x, animation_row * cell_size.y), cell_size)
 		draw_circle(p + Vector2(0, destination_size.y * 0.28), radius + 5, Color(0, 0, 0, 0.28))
 		draw_texture_rect_region(animated_sheet, Rect2(draw_position, destination_size), source_rect, visual_modulate)
 		return
@@ -3278,7 +4001,7 @@ func _draw_zombie(zombie: Dictionary) -> void:
 	var destination_size: Vector2 = Vector2(radius * 3.4, radius * 3.4) * visual_scale
 	var draw_position := p + Vector2(-destination_size.x * 0.5, -destination_size.y * 0.62 + sway)
 	var cell_size := Vector2(zombie_sheet.get_width() / 4.0, zombie_sheet.get_height() / 3.0)
-	var source_rect := Rect2(Vector2((zombie_type % 4) * cell_size.x, floori(zombie_type / 4.0) * cell_size.y), cell_size)
+	var source_rect := Rect2(Vector2((sprite_index % 4) * cell_size.x, floori(sprite_index / 4.0) * cell_size.y), cell_size)
 	draw_circle(p + Vector2(0, destination_size.y * 0.28), radius + 5, Color(0, 0, 0, 0.28))
 	draw_texture_rect_region(zombie_sheet, Rect2(draw_position, destination_size), source_rect, visual_modulate)
 
@@ -3298,6 +4021,21 @@ func _save_record() -> void:
 	var stats := _normalize_record(records.get(username, {}))
 	stats["score"] = maxi(int(stats["score"]), score)
 	stats["wave"] = maxi(int(stats["wave"]), wave)
+	stats["current_wave"] = wave
+	stats["max_lives"] = max_lives
+	stats["ammo_capacity"] = ammo_capacity
+	stats["ammo_reserve"] = ammo_reserve
+	stats["zone"] = zone_index
+	stats["weather"] = weather
+	stats["resources"] = resource_inventory.duplicate(true)
+	stats["upgrade_levels"] = upgrade_levels.duplicate(true)
+	stats["evolution_unlocked"] = evolution_unlocked.duplicate(true)
+	stats["evolution_acquired"] = evolution_acquired.duplicate(true)
+	stats["score_multiplier"] = score_multiplier
+	stats["projectile_speed_multiplier"] = projectile_speed_multiplier
+	stats["fire_rate_multiplier"] = fire_rate_multiplier
+	stats["bullet_size_multiplier"] = bullet_size_multiplier
+	stats["player_speed"] = player_speed
 	stats["kills"] = maxi(int(stats["kills"]), kills)
 	records[username] = stats
 	_write_records()
@@ -3330,6 +4068,8 @@ func _return_to_menu_after_transition(message: String) -> void:
 	if player_sprite != null:
 		player_sprite.stop()
 		player_sprite.visible = false
+	if is_instance_valid(zone_exit_sprite):
+		zone_exit_sprite.visible = false
 	upgrade_pending = false
 	if hud != null:
 		hud.visible = false

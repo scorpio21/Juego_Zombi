@@ -108,4 +108,3 @@ func _draw() -> void:
 		var sy := 142.0 + sin(sparkle_time * 0.7 + float(i)) * 35.0
 		var sa := 0.18 + 0.18 * sin(sparkle_time * 1.8 + float(i))
 		draw_circle(Vector2(sx, sy), 1.4, Color(0.42, 0.86, 1.0, sa))
-

@@ -6,7 +6,7 @@ extends Node2D
 
 const PICKUP_SCENE := preload("res://scenes/world/PickupItem.tscn")
 const RESOURCE_DEFINITIONS := {
-	"ammo": {"max": 5, "amount": 6, "weight": 24.0},
+	"ammo": {"max": 5, "amount": 6, "weight": 30.0},
 	"medkit": {"max": 3, "amount": 1, "weight": 8.0},
 	"scrap": {"max": 5, "amount": 1, "weight": 25.0},
 	"materials": {"max": 5, "amount": 1, "weight": 18.0},
@@ -31,6 +31,7 @@ var _rng := RandomNumberGenerator.new()
 var _spawn_timer := 0.0
 var _active: Array[PickupItem] = []
 var _weather := "soleado"
+var _zone_preferences: PackedStringArray = PackedStringArray()
 var _pending_requests := 0
 var _pending_kind := ""
 
@@ -72,6 +73,9 @@ func request_spawn(amount: int, preferred_kind: String = "") -> void:
 
 func set_weather(value: String) -> void:
 	_weather = value
+
+func set_zone_preferences(values: PackedStringArray) -> void:
+	_zone_preferences = values
 
 func get_active_pickups() -> Array[PickupItem]:
 	_prune_invalid()
@@ -136,15 +140,7 @@ func _choose_kind(ignore_cap := false) -> String:
 		var definition: Dictionary = RESOURCE_DEFINITIONS[kind]
 		if not ignore_cap and _count_kind(kind) >= int(definition["max"]):
 			continue
-		var weight := float(definition["weight"])
-		if _weather == "lluvia" and kind == "water":
-			weight *= 2.2
-		elif _weather == "tormenta" and kind == "materials":
-			weight *= 2.0
-		elif _weather == "niebla" and kind in ["food", "medkit"]:
-			weight *= 1.7
-		elif _weather == "ola_calor" and kind == "water":
-			weight *= 2.0
+		var weight := _effective_weight(kind, float(definition["weight"]))
 		candidates.append(kind)
 		total_weight += weight
 	if candidates.is_empty():
@@ -152,15 +148,25 @@ func _choose_kind(ignore_cap := false) -> String:
 	var roll := _rng.randf_range(0.0, total_weight)
 	for kind in candidates:
 		var definition: Dictionary = RESOURCE_DEFINITIONS[kind]
-		var weight := float(definition["weight"])
-		if _weather == "lluvia" and kind == "water": weight *= 2.2
-		elif _weather == "tormenta" and kind == "materials": weight *= 2.0
-		elif _weather == "niebla" and kind in ["food", "medkit"]: weight *= 1.7
-		elif _weather == "ola_calor" and kind == "water": weight *= 2.0
+		var weight := _effective_weight(kind, float(definition["weight"]))
 		roll -= weight
 		if roll <= 0.0:
 			return kind
 	return candidates.back()
+
+func _effective_weight(kind: String, base_weight: float) -> float:
+	var weight := base_weight
+	if kind in _zone_preferences:
+		weight *= 1.8
+	if _weather == "lluvia" and kind == "water":
+		weight *= 2.2
+	elif _weather == "tormenta" and kind == "materials":
+		weight *= 2.0
+	elif _weather == "niebla" and kind in ["food", "medkit"]:
+		weight *= 1.7
+	elif _weather == "ola_calor" and kind == "water":
+		weight *= 2.0
+	return weight
 
 func _count_kind(kind: String) -> int:
 	var total := 0

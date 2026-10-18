@@ -1,0 +1,27 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/world/zone_definition.gd" id="1_zone"]
+
+[node name="Hospital" type="Node2D"]
+script = ExtResource("1_zone")
+zone_id = "hospital"
+display_name = "HOSPITAL"
+exit_position = Vector2(1110, 620)
+enemy_spawn_points = PackedVector2Array(970, 150, 1040, 200, 1150, 280)
+enemy_waypoints = PackedVector2Array(920, 220, 830, 300, 735, 385, 640, 430)
+navigation_boundary = PackedVector2Array(180, 145, 1050, 145, 1190, 250, 1070, 350, 920, 440, 780, 675, 350, 675, 210, 560, 300, 430, 160, 320)
+secondary_prop_region = 7
+secondary_prop_position = Vector2(1080, 305)
+secondary_prop_kind = "hospital_emergency_lamp"
+secondary_prop_health = 130.0
+secondary_prop_size = Vector2(54, 88)
+secondary_prop_reward = "medkit"
+secondary_prop_reward_amount = 1
+resource_route_start = Vector2(970, 200)
+resource_route_end = Vector2(560, 640)
+weather_bias = ["niebla", "ceniza_toxica", "noche"]
+difficulty_multiplier = 1.45
+backdrop_path = "res://assets/world/zones/hospital_backdrop.jpg"
+exit_sprite_path = "res://assets/world/zones/zone_exit.png"
+enemy_pool = PackedStringArray("hospital_carrier", "scientist", "toxic", "police")
+resource_preferences = PackedStringArray("medkit", "materials", "water")

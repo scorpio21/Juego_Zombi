@@ -13,4 +13,3 @@ extends Resource
 @export_range(0.0, 1.0, 0.01) var critical_chance: float = 0.05
 @export var special_ability: String = "Ninguna"
 @export var portrait: Texture2D
-

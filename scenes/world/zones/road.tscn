@@ -1,0 +1,27 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/world/zone_definition.gd" id="1_zone"]
+
+[node name="Road" type="Node2D"]
+script = ExtResource("1_zone")
+zone_id = "road"
+display_name = "CARRETERA ABANDONADA"
+exit_position = Vector2(1110, 620)
+enemy_spawn_points = PackedVector2Array(1010, 145, 1080, 180, 1150, 215)
+enemy_waypoints = PackedVector2Array(960, 190, 870, 270, 780, 350, 690, 415)
+navigation_boundary = PackedVector2Array(120, 145, 1160, 145, 1240, 240, 1080, 340, 900, 450, 760, 675, 420, 675, 290, 560, 360, 430, 220, 330)
+secondary_prop_region = 6
+secondary_prop_position = Vector2(1080, 505)
+secondary_prop_kind = "road_sandbags"
+secondary_prop_health = 210.0
+secondary_prop_size = Vector2(120, 92)
+secondary_prop_reward = "ammo"
+secondary_prop_reward_amount = 2
+resource_route_start = Vector2(1000, 184)
+resource_route_end = Vector2(540, 650)
+weather_bias = ["lluvia", "tormenta", "viento"]
+difficulty_multiplier = 1.1
+backdrop_path = "res://assets/world/zones/road_backdrop.jpg"
+exit_sprite_path = "res://assets/world/zones/zone_exit.png"
+enemy_pool = PackedStringArray("road_raider", "worker", "police", "runner")
+resource_preferences = PackedStringArray("ammo", "scrap", "water")

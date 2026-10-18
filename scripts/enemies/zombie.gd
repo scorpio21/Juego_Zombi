@@ -48,12 +48,17 @@ func _build_health_bar() -> void:
 		return
 	health_bar = ProgressBar.new()
 	health_bar.name = "HealthBar"
-	health_bar.position = Vector2(-25, -43)
-	health_bar.size = Vector2(50, 6)
+	# El sprite se dibuja desde los pies del enemigo; la barra debe quedar
+	# anclada justo sobre la cabeza y no flotando en el escenario.
+	health_bar.position = Vector2(-25, -52)
+	health_bar.size = Vector2(50, 4)
 	# Godot's default ProgressBar theme has a larger minimum height. Scale it
 	# vertically so the in-game bar remains a thin health indicator.
 	health_bar.custom_minimum_size = Vector2.ZERO
-	health_bar.scale = Vector2(1.0, 0.25)
+	# ProgressBar conserva una altura mínima del tema aunque su tamaño sea 4 px.
+	# Esta escala la convierte en una línea fina sin alterar su anchura.
+	health_bar.scale = Vector2(1.0, 0.05)
+	health_bar.z_index = 8
 	health_bar.min_value = 0.0
 	health_bar.max_value = float(enemy_data.max_health)
 	health_bar.value = current_health
