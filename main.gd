@@ -2916,8 +2916,12 @@ func _update_zombies(delta: float) -> void:
 		var zombie_node = zombie.get("node")
 		# Si un nodo se libera sin emitir la señal de muerte, no debe bloquear
 		# para siempre la oleada ni dejar un registro invisible en el array.
-		if not is_instance_valid(zombie_node) or zombie_node.is_dead:
+		# Los zombies muertos se conservan hasta que termine su animación: la
+		# señal died los necesita para conceder puntos, combo y bestiario.
+		if not is_instance_valid(zombie_node):
 			zombies.remove_at(i)
+			continue
+		if zombie_node.is_dead:
 			continue
 		var distance: float = zombie["pos"].distance_to(player_pos)
 		zombie["hurt_timer"] = maxf(0.0, float(zombie.get("hurt_timer", 0.0)) - delta)
