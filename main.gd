@@ -2760,27 +2760,6 @@ func _start_game_after_transition() -> void:
 		return
 	menu_message.visible = false
 	var player_stats := _normalize_record(records.get(username, {}))
-	var has_saved_progress := int(player_stats.get("plays", 0)) > 0 and (
-		int(player_stats.get("zone", 0)) > 0 or
-		int(player_stats.get("current_wave", 1)) > 1 or
-		not Dictionary(player_stats.get("resources", {})).is_empty() or
-		not Dictionary(player_stats.get("upgrade_levels", {})).is_empty() or
-		not Dictionary(player_stats.get("evolution_acquired", {})).is_empty()
-	)
-	var resume_zone := clampi(int(player_stats.get("zone", 0)), 0, ZONE_DEFINITIONS.size() - 1) if has_saved_progress else 0
-	var resume_wave := maxi(1, int(player_stats.get("current_wave", 1))) if has_saved_progress else 1
-	var resume_weather := str(player_stats.get("weather", "soleado")) if has_saved_progress else "soleado"
-	var resume_clock_minutes := float(player_stats.get("clock_minutes", CLOCK_START_MINUTES)) if has_saved_progress else CLOCK_START_MINUTES
-	var resume_calendar_day := maxi(1, int(player_stats.get("calendar_day", 1))) if has_saved_progress else 1
-	var resume_resources: Dictionary = Dictionary(player_stats.get("resources", {})).duplicate(true) if has_saved_progress else {}
-	var resume_upgrade_levels: Dictionary = Dictionary(player_stats.get("upgrade_levels", {})).duplicate(true) if has_saved_progress else {}
-	var resume_evolution_unlocked: Dictionary = Dictionary(player_stats.get("evolution_unlocked", {})).duplicate(true) if has_saved_progress else {}
-	var resume_evolution_acquired: Dictionary = Dictionary(player_stats.get("evolution_acquired", {})).duplicate(true) if has_saved_progress else {}
-	var resume_score_multiplier := float(player_stats.get("score_multiplier", 1.0)) if has_saved_progress else 1.0
-	var resume_projectile_speed_multiplier := float(player_stats.get("projectile_speed_multiplier", 1.0)) if has_saved_progress else 1.0
-	var resume_fire_rate_multiplier := float(player_stats.get("fire_rate_multiplier", 1.0)) if has_saved_progress else 1.0
-	var resume_bullet_size_multiplier := float(player_stats.get("bullet_size_multiplier", 1.0)) if has_saved_progress else 1.0
-	var resume_player_speed := float(player_stats.get("player_speed", 0.0)) if has_saved_progress else 0.0
 	player_stats["plays"] = int(player_stats["plays"]) + 1
 	records[username] = player_stats
 	_write_records()
@@ -2792,17 +2771,16 @@ func _start_game_after_transition() -> void:
 	touch_shoot_pressed = false
 	weapon_reloading = false
 	reload_timer = 0.0
-	max_lives = clampi(int(player_stats.get("max_lives", 3)), 3, MAX_LIVES) if has_saved_progress else 3
+	max_lives = 3
 	lives = max_lives
-	var saved_ammo_capacity := int(player_stats.get("ammo_capacity", MAGAZINE_SIZE)) if has_saved_progress else MAGAZINE_SIZE
-	ammo_capacity = maxi(MAGAZINE_SIZE, saved_ammo_capacity)
-	ammo_reserve = maxi(0, int(player_stats.get("ammo_reserve", 0))) if has_saved_progress else 0
+	ammo_capacity = MAGAZINE_SIZE
+	ammo_reserve = 0
 	ammo_in_magazine = ammo_capacity
 	player_moving = false
 	player_facing = Vector2.DOWN
 	player_dead = false
-	score = int(player_stats.get("score", 0)) if has_saved_progress else 0
-	kills = int(player_stats.get("kills", 0)) if has_saved_progress else 0
+	score = 0
+	kills = 0
 	combo = 0
 	max_lives = 3
 	lives = max_lives
@@ -2810,26 +2788,24 @@ func _start_game_after_transition() -> void:
 	spawn_protection = 3.0
 	player_speed = character_data_list[selected_character].speed
 	player_base_speed = player_speed
-	score_multiplier = resume_score_multiplier
-	projectile_speed_multiplier = resume_projectile_speed_multiplier
-	fire_rate_multiplier = resume_fire_rate_multiplier
-	bullet_size_multiplier = resume_bullet_size_multiplier
-	if resume_player_speed > 0.0:
-		player_speed = maxf(player_base_speed, resume_player_speed)
+	score_multiplier = 1.0
+	projectile_speed_multiplier = 1.0
+	fire_rate_multiplier = 1.0
+	bullet_size_multiplier = 1.0
 	protection_timer = 0.0
 	phase_timer = 0.0
-	upgrade_levels = resume_upgrade_levels
-	evolution_unlocked = resume_evolution_unlocked
-	evolution_acquired = resume_evolution_acquired
+	upgrade_levels = {}
+	evolution_unlocked = {}
+	evolution_acquired = {}
 	upgrade_timer = 0.0
 	upgrade_pending = false
-	wave = resume_wave
+	wave = 1
 	wave_state = "combat"
 	wave_break_timer = 0.0
 	wave_preparation_timer = 0.0
 	wave_enemy_target = 0
 	wave_spawned_count = 0
-	zone_index = resume_zone
+	zone_index = 0
 	_load_active_zone_definition()
 	zone_exit_unlocked = false
 	zone_transition_message = ""
@@ -2842,10 +2818,10 @@ func _start_game_after_transition() -> void:
 	day_phase = "amanecer"
 	day_phase_index = 0
 	day_phase_timer = _phase_duration(day_phase)
-	clock_minutes = fmod(maxf(0.0, resume_clock_minutes), 1440.0)
-	calendar_day = resume_calendar_day
-	var resume_season_length := climate_config.days_per_season if climate_config != null else 7
-	season_index = int(floor(float(maxi(0, calendar_day - 1)) / float(maxi(1, resume_season_length)))) % SEASON_NAMES.size()
+	clock_minutes = CLOCK_START_MINUTES
+	calendar_day = 1
+	var season_length := climate_config.days_per_season if climate_config != null else 7
+	season_index = int(floor(float(maxi(0, calendar_day - 1)) / float(maxi(1, season_length)))) % SEASON_NAMES.size()
 	next_weather_wave = 2
 	weather_darkness = 0.0
 	weather_visibility = 1.0
@@ -2857,10 +2833,7 @@ func _start_game_after_transition() -> void:
 	lightning_wave_alpha = 0.0
 	resource_inventory = {"ammo": 0, "medkit": 0, "scrap": 0, "materials": 0, "food": 0, "water": 0}
 	ammo_supply_timer = 4.0
-	for resource_key in resume_resources.keys():
-		if resource_inventory.has(str(resource_key)):
-			resource_inventory[str(resource_key)] = maxi(0, int(resume_resources[resource_key]))
-	_set_weather(resume_weather if has_saved_progress else _zone_start_weather(), false)
+	_set_weather(_zone_start_weather(), false)
 	player_pos = Vector2(640, 405)
 	if is_instance_valid(buff_indicator):
 		buff_indicator.clear_buffs()
