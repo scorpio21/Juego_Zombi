@@ -173,6 +173,35 @@ resources/climate/ClimateSettings_Pesadilla.tres
 
 El bestiario registra enemigos cuando mueren. Incluye datos como nombre, nivel, vida, ataque, defensa, velocidad, habilidades, descripción, tipo y experiencia otorgada.
 
+#### Tabla de enemigos
+
+La columna **Puntos base** corresponde a una muerte en la oleada 1, con combo 0 y sin multiplicadores. En partida se añaden `+10` por oleada, `+10` por cada punto de combo y se aplican las mejoras de puntuación.
+
+| Enemigo | Zona | Vida | Experiencia | Puntos base |
+| --- | --- | ---: | ---: | ---: |
+| Zombi trabajador | General | 90 | 10 | 142 |
+| Zombi policía | General | 150 | 15 | 199 |
+| Zombi soldado | General | 190 | 20 | 247 |
+| Zombi de construcción | General | 220 | 25 | 259 |
+| Zombi científico | General | 120 | 30 | 196 |
+| Zombi enfermero | General | 105 | 35 | 187 |
+| Civil infectado | General | 80 | 40 | 170 |
+| Zombi quemado | General | 170 | 45 | 252 |
+| Zombi tóxico | General | 135 | 50 | 238 |
+| Zombi mutante | General | 300 | 55 | 371 |
+| Zombi blindado | General | 360 | 60 | 388 |
+| Zombi corredor | General | 75 | 65 | 221 |
+| Acechador del bosque | Bosque | 145 | 65 | 525 |
+| Corredor desollado | Bosque | 82 | 70 | 522 |
+| Leñador infectado | Bosque | 285 | 75 | 660 |
+| Bestia del bosque | Bosque | 520 | 80 | 660 |
+| Saqueador de carretera | Carretera | 175 | 40 | 404 |
+| Quemado de la gasolinera | Gasolinera | 245 | 45 | 486 |
+| Aullador del pueblo | Pueblo | 155 | 50 | 451 |
+| Portador del hospital | Hospital | 210 | 35 | 398 |
+| Bruto industrial | Zona industrial | 430 | 60 | 660 |
+| Élite infectado | Base militar | 500 | 20 | 499 |
+
 ### Zonas y progresión
 
 La partida avanza por siete zonas conectadas mediante salidas físicas:
