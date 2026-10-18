@@ -10,6 +10,14 @@ const MAX_LIVES := 12
 const RELOAD_DURATION := 0.85
 const WAVE_BREAK_DURATION := 10.0
 const WAVE_PREPARATION_DURATION := 1.4
+const SEASON_NAMES := ["PRIMAVERA", "VERANO", "OTOÑO", "INVIERNO"]
+const SEASON_ICON_TEXTURES := [
+	preload("res://assets/ui/seasons/season_spring.png"),
+	preload("res://assets/ui/seasons/season_summer.png"),
+	preload("res://assets/ui/seasons/season_autumn.png"),
+	preload("res://assets/ui/seasons/season_winter.png")
+]
+const CLOCK_START_MINUTES := 360.0
 const ZONE_EXIT_WAVES := [5, 10, 15, 20, 25, 30]
 # DEBUG TEMPORAL: mantener al jugador con vida durante las pruebas.
 # Poner en false para recuperar el comportamiento normal.
@@ -186,6 +194,9 @@ var weather_tween: Tween
 var day_phase := "amanecer"
 var day_phase_index := 0
 var day_phase_timer := 0.0
+var clock_minutes := CLOCK_START_MINUTES
+var calendar_day := 1
+var season_index := 0
 var lightning_wave_radius := 0.0
 var lightning_wave_alpha := 0.0
 var resource_inventory := {"ammo": 0, "medkit": 0, "scrap": 0, "materials": 0, "food": 0, "water": 0}
@@ -213,6 +224,10 @@ var leaderboard_label: Label
 var hud: CanvasLayer
 var score_label: Label
 var zone_label: Label
+var season_icon: TextureRect
+var season_label: Label
+var day_label: Label
+var clock_label: Label
 var wave_label: Label
 var record_label: Label
 var lives_label: Label
@@ -608,6 +623,47 @@ func _update_day_cycle(delta: float) -> void:
 	var phases := ["amanecer", "mañana", "tarde", "atardecer", "noche"]
 	_set_day_phase(str(phases[day_phase_index]), true)
 
+func _update_calendar(delta: float) -> void:
+	if not _climate_enabled() or mode != "playing":
+		return
+	var minutes_per_second := climate_config.clock_minutes_per_second if climate_config != null else 4.8
+	var advanced_minutes := maxf(0.0, delta * minutes_per_second)
+	var total_minutes := clock_minutes + advanced_minutes
+	var elapsed_days := int(floor(total_minutes / 1440.0))
+	clock_minutes = fmod(total_minutes, 1440.0)
+	if elapsed_days > 0:
+		calendar_day += elapsed_days
+	var season_length := climate_config.days_per_season if climate_config != null else 7
+	season_index = int(floor(float(maxi(0, calendar_day - 1)) / float(maxi(1, season_length)))) % SEASON_NAMES.size()
+
+func _season_visibility_modifier() -> Dictionary:
+	match season_index:
+		0: return {"darkness": 0.0, "visibility": 0.02}
+		1: return {"darkness": -0.03, "visibility": 0.04}
+		2: return {"darkness": 0.03, "visibility": -0.04}
+		3: return {"darkness": 0.08, "visibility": -0.08}
+	return {"darkness": 0.0, "visibility": 0.0}
+
+func _season_player_speed() -> float:
+	match season_index:
+		1: return 0.98
+		2: return 0.99
+		3: return 0.95
+	return 1.0
+
+func _season_zombie_speed() -> float:
+	match season_index:
+		1: return 0.98
+		2: return 1.02
+		3: return 1.04
+	return 1.0
+
+func _season_enemy_bonus() -> float:
+	match season_index:
+		2: return 0.01
+		3: return 0.03
+	return 0.0
+
 func _random_change_interval() -> float:
 	if climate_config == null:
 		return 120.0
@@ -621,6 +677,9 @@ func _set_weather(next_weather: String, announce: bool = true) -> void:
 		climate_controller.set_weather_audio(next_weather, climate_config.climate_transition_speed if climate_config != null else -1.0)
 		climate_controller.notify_climate_changed(next_weather)
 	var profile := _weather_profile(next_weather)
+	var seasonal_modifier := _season_visibility_modifier()
+	profile["darkness"] = clampf(float(profile["darkness"]) + float(seasonal_modifier["darkness"]), 0.0, 1.0)
+	profile["visibility"] = clampf(float(profile["visibility"]) + float(seasonal_modifier["visibility"]), 0.25, 1.0)
 	var rain_target := float(profile["rain"]) * (climate_config.rain_intensity if climate_config != null else 1.0)
 	var fog_target := float(profile["fog"]) * (climate_config.fog_intensity if climate_config != null else 1.0)
 	weather_change_timer = _weather_duration(next_weather) if next_weather == "noche" or next_weather == "soleado" else _random_change_interval()
@@ -699,6 +758,20 @@ func _roll_weather() -> String:
 		"ceniza_toxica": climate_config.toxic_ash_probability if climate_config != null else 0.03,
 		"ola_calor": climate_config.heat_wave_probability if climate_config != null else 0.05
 	}
+	match season_index:
+		0:
+			weights["lluvia"] = float(weights["lluvia"]) * 1.35
+			weights["niebla"] = float(weights["niebla"]) * 1.20
+		1:
+			weights["lluvia"] = float(weights["lluvia"]) * 0.75
+			weights["ola_calor"] = float(weights["ola_calor"]) * 2.0
+		2:
+			weights["lluvia"] = float(weights["lluvia"]) * 1.25
+			weights["niebla"] = float(weights["niebla"]) * 1.25
+			weights["tormenta"] = float(weights["tormenta"]) * 1.15
+		3:
+			weights["niebla"] = float(weights["niebla"]) * 1.30
+			weights["tormenta"] = float(weights["tormenta"]) * 1.25
 	weights.erase(weather)
 	var total := 0.0
 	for weight in weights.values():
@@ -719,6 +792,7 @@ func _update_weather(delta: float) -> void:
 		weather_change_timer = 0.0
 		weather_lightning_strength = 0.0
 		return
+	_update_calendar(delta)
 	_update_day_cycle(delta)
 	weather_change_timer = maxf(0.0, weather_change_timer - delta)
 	if mode == "playing" and weather_change_timer <= 0.0 and day_phase != "noche":
@@ -1742,6 +1816,8 @@ func _normalize_record(value) -> Dictionary:
 			"ammo_reserve": int(value.get("ammo_reserve", 0)),
 			"zone": int(value.get("zone", 0)),
 			"weather": str(value.get("weather", "soleado")),
+			"clock_minutes": float(value.get("clock_minutes", CLOCK_START_MINUTES)),
+			"calendar_day": int(value.get("calendar_day", 1)),
 			"resources": Dictionary(value.get("resources", {})),
 			"upgrade_levels": Dictionary(value.get("upgrade_levels", {})),
 			"evolution_unlocked": Dictionary(value.get("evolution_unlocked", {})),
@@ -1755,7 +1831,7 @@ func _normalize_record(value) -> Dictionary:
 			"plays": int(value.get("plays", 0)),
 			"discovered": Array(value.get("discovered", []))
 		}
-	return {"score": int(value), "wave": 1, "current_wave": 1, "max_lives": 3, "ammo_capacity": MAGAZINE_SIZE, "ammo_reserve": 0, "zone": 0, "weather": "soleado", "resources": {}, "upgrade_levels": {}, "evolution_unlocked": {}, "evolution_acquired": {}, "score_multiplier": 1.0, "projectile_speed_multiplier": 1.0, "fire_rate_multiplier": 1.0, "bullet_size_multiplier": 1.0, "player_speed": 0.0, "kills": 0, "plays": 0, "discovered": []}
+	return {"score": int(value), "wave": 1, "current_wave": 1, "max_lives": 3, "ammo_capacity": MAGAZINE_SIZE, "ammo_reserve": 0, "zone": 0, "weather": "soleado", "clock_minutes": CLOCK_START_MINUTES, "calendar_day": 1, "resources": {}, "upgrade_levels": {}, "evolution_unlocked": {}, "evolution_acquired": {}, "score_multiplier": 1.0, "projectile_speed_multiplier": 1.0, "fire_rate_multiplier": 1.0, "bullet_size_multiplier": 1.0, "player_speed": 0.0, "kills": 0, "plays": 0, "discovered": []}
 
 func _current_discovered_ids() -> Array[String]:
 	var result: Array[String] = []
@@ -1797,18 +1873,32 @@ func _build_hud() -> void:
 	hud.add_child(visibility_overlay)
 	var top := ColorRect.new()
 	top.position = Vector2(20, 18)
-	top.size = Vector2(1240, 86)
+	top.size = Vector2(1240, 100)
 	top.color = Color(0.03, 0.07, 0.1, 0.86)
 	hud.add_child(top)
 	score_label = _label(hud, "PUNTOS  0", Vector2(44, 32), 23, Color("f0bf6d"))
 	zone_label = _label(hud, "ZONA  01", Vector2(300, 36), 14, Color("65e6c4"))
-	wave_label = _label(hud, "OLEADA  01", Vector2(390, 35), 19, Color("e9f1f3"))
-	record_label = _label(hud, "RECORD  0", Vector2(510, 35), 19, Color("85d6c4"))
-	lives_label = _label(hud, "VIDAS", Vector2(705, 35), 19, Color("e85b63"))
+	season_icon = TextureRect.new()
+	season_icon.position = Vector2(370, 27)
+	season_icon.size = Vector2(30, 30)
+	season_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	season_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	season_icon.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	season_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hud.add_child(season_icon)
+	season_label = _label(hud, "PRIMAVERA", Vector2(401, 36), 13, Color("f0bf6d"))
+	season_label.size = Vector2(86, 20)
+	clock_label = _label(hud, "06:00", Vector2(488, 29), 19, Color("e9f1f3"))
+	clock_label.size = Vector2(64, 24)
+	day_label = _label(hud, "DÍA 01", Vector2(488, 56), 12, Color("85d6c4"))
+	day_label.size = Vector2(76, 18)
+	wave_label = _label(hud, "OLEADA  01", Vector2(580, 35), 18, Color("e9f1f3"))
+	record_label = _label(hud, "RECORD  0", Vector2(690, 35), 17, Color("85d6c4"))
+	lives_label = _label(hud, "VIDAS", Vector2(840, 35), 17, Color("e85b63"))
 	var heart_texture: Texture2D = load("res://assets/ui/heart.svg") as Texture2D
 	for i in range(3):
 		var heart := TextureRect.new()
-		heart.position = Vector2(770 + i * 16, 42)
+		heart.position = Vector2(900 + i * 16, 42)
 		heart.size = Vector2(13, 12)
 		heart.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		heart.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
@@ -1816,10 +1906,10 @@ func _build_hud() -> void:
 		heart.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		hud.add_child(heart)
 		life_icons.append(heart)
-	status_label = _label(hud, "", Vector2(360, 76), 15, Color("d96d6f"))
-	status_label.size = Vector2(600, 22)
+	status_label = _label(hud, "", Vector2(300, 78), 14, Color("d96d6f"))
+	status_label.size = Vector2(480, 20)
 	status_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	ammo_label = _label(hud, "MUNICIÓN  25/25 · RES 00", Vector2(995, 38), 15, Color("f0bf6d"))
+	ammo_label = _label(hud, "MUNICIÓN  25/25 · RES 00", Vector2(1010, 38), 14, Color("f0bf6d"))
 	ammo_label.size = Vector2(240, 24)
 	ammo_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	game_over_label = _label(hud, "", Vector2(380, 295), 30, Color("f0bf6d"))
@@ -2680,6 +2770,8 @@ func _start_game_after_transition() -> void:
 	var resume_zone := clampi(int(player_stats.get("zone", 0)), 0, ZONE_DEFINITIONS.size() - 1) if has_saved_progress else 0
 	var resume_wave := maxi(1, int(player_stats.get("current_wave", 1))) if has_saved_progress else 1
 	var resume_weather := str(player_stats.get("weather", "soleado")) if has_saved_progress else "soleado"
+	var resume_clock_minutes := float(player_stats.get("clock_minutes", CLOCK_START_MINUTES)) if has_saved_progress else CLOCK_START_MINUTES
+	var resume_calendar_day := maxi(1, int(player_stats.get("calendar_day", 1))) if has_saved_progress else 1
 	var resume_resources: Dictionary = Dictionary(player_stats.get("resources", {})).duplicate(true) if has_saved_progress else {}
 	var resume_upgrade_levels: Dictionary = Dictionary(player_stats.get("upgrade_levels", {})).duplicate(true) if has_saved_progress else {}
 	var resume_evolution_unlocked: Dictionary = Dictionary(player_stats.get("evolution_unlocked", {})).duplicate(true) if has_saved_progress else {}
@@ -2750,6 +2842,10 @@ func _start_game_after_transition() -> void:
 	day_phase = "amanecer"
 	day_phase_index = 0
 	day_phase_timer = _phase_duration(day_phase)
+	clock_minutes = fmod(maxf(0.0, resume_clock_minutes), 1440.0)
+	calendar_day = resume_calendar_day
+	var resume_season_length := climate_config.days_per_season if climate_config != null else 7
+	season_index = int(floor(float(maxi(0, calendar_day - 1)) / float(maxi(1, resume_season_length)))) % SEASON_NAMES.size()
 	next_weather_wave = 2
 	weather_darkness = 0.0
 	weather_visibility = 1.0
@@ -2803,7 +2899,7 @@ func _update_game(delta: float) -> void:
 	player_moving = movement.length_squared() > 0.01
 	if player_moving:
 		player_facing = movement.normalized()
-	var intended_player_pos := player_pos + movement * player_speed * _weather_player_speed() * delta
+	var intended_player_pos := player_pos + movement * player_speed * _weather_player_speed() * _season_player_speed() * delta
 	player_pos = _move_with_obstacles(player_pos, intended_player_pos, 18.0)
 	player_pos.x = clampf(player_pos.x, 34.0, 1246.0)
 	player_pos.y = clampf(player_pos.y, 126.0, 690.0)
@@ -2943,7 +3039,7 @@ func _update_zombies(delta: float) -> void:
 		var distance: float = zombie["pos"].distance_to(player_pos)
 		zombie["hurt_timer"] = maxf(0.0, float(zombie.get("hurt_timer", 0.0)) - delta)
 		zombie["attack_timer"] = maxf(0.0, float(zombie.get("attack_timer", 0.0)) - delta)
-		var speed := float(zombie["speed"]) * (1.0 + wave * 0.035) * _early_wave_speed_multiplier() * _weather_zombie_speed()
+		var speed := float(zombie["speed"]) * (1.0 + wave * 0.035) * _early_wave_speed_multiplier() * _weather_zombie_speed() * _season_zombie_speed()
 		var route_target := player_pos
 		var route_index := int(zombie.get("road_target_index", -1))
 		var approach_offset: Vector2 = zombie.get("approach_offset", Vector2.ZERO)
@@ -3202,6 +3298,14 @@ func _spawn_climate_resources() -> void:
 		resource_kind = "water"
 	elif weather == "ceniza_toxica":
 		resource_kind = "materials"
+	elif season_index == 0:
+		resource_kind = "food"
+	elif season_index == 1:
+		resource_kind = "water"
+	elif season_index == 2:
+		resource_kind = "materials"
+	elif season_index == 3:
+		resource_kind = "food"
 	resource_kind = _zone_resource_kind(resource_kind)
 	resource_spawner.set_weather(weather)
 	resource_spawner.request_spawn(count, resource_kind)
@@ -3274,6 +3378,7 @@ func _spawn_zombie() -> void:
 	var zombie_type := _zone_enemy_index()
 	var data = enemy_data_list[zombie_type]
 	var night_bonus := _night_bonus_for_enemy(data)
+	var season_bonus := _season_enemy_bonus()
 	var zone_bonus := _zone_difficulty_multiplier() - 1.0
 	var zombie_node = zombie_scene.instantiate() if zombie_scene != null else ZOMBIE_SCENE_RESOURCE.instantiate()
 	if zombie_node == null:
@@ -3281,7 +3386,7 @@ func _spawn_zombie() -> void:
 		return
 	zombie_node.setup(data)
 	zombie_node.modulate = data.visual_tint
-	var health_multiplier := 1.0 + night_bonus + zone_bonus * 0.55
+	var health_multiplier := 1.0 + night_bonus + season_bonus + zone_bonus * 0.55
 	if health_multiplier > 1.0:
 		var scaled_health := float(data.max_health) * health_multiplier
 		zombie_node.current_health = scaled_health
@@ -3298,7 +3403,7 @@ func _spawn_zombie() -> void:
 		zombie_node.position = spawn_pos
 	var approach_angle := rng.randf_range(0.0, TAU)
 	var approach_distance := rng.randf_range(26.0, 78.0)
-	zombies.append({"pos": spawn_pos, "speed": float(data.speed) * rng.randf_range(0.94, 1.06) * (1.0 + zone_bonus * 0.18), "radius": rng.randf_range(17.0, 24.0), "phase": rng.randf_range(0.0, 6.0), "swarm_phase": rng.randf_range(0.0, TAU), "approach_offset": Vector2.from_angle(approach_angle) * approach_distance, "type": zombie_type, "node": zombie_node, "data": data, "road_target_index": 0, "attack_multiplier": 1.0 + night_bonus + zone_bonus * 0.25, "animation_row": 1, "hurt_timer": 0.0, "attack_timer": 0.0})
+	zombies.append({"pos": spawn_pos, "speed": float(data.speed) * rng.randf_range(0.94, 1.06) * (1.0 + zone_bonus * 0.18), "radius": rng.randf_range(17.0, 24.0), "phase": rng.randf_range(0.0, 6.0), "swarm_phase": rng.randf_range(0.0, TAU), "approach_offset": Vector2.from_angle(approach_angle) * approach_distance, "type": zombie_type, "node": zombie_node, "data": data, "road_target_index": 0, "attack_multiplier": 1.0 + night_bonus + season_bonus + zone_bonus * 0.25, "animation_row": 1, "hurt_timer": 0.0, "attack_timer": 0.0})
 	wave_spawned_count += 1
 
 func _is_valid_zombie_spawn(candidate: Vector2) -> bool:
@@ -3422,6 +3527,16 @@ func _update_hud() -> void:
 	score_label.text = "PUNTOS  %06d" % score
 	if zone_label != null:
 		zone_label.text = "ZONA  %02d" % (zone_index + 1)
+	if season_label != null:
+		season_label.text = str(SEASON_NAMES[season_index])
+	if season_icon != null:
+		season_icon.texture = SEASON_ICON_TEXTURES[season_index]
+	if clock_label != null:
+		var clock_hour := int(floor(clock_minutes / 60.0)) % 24
+		var clock_minute := int(floor(fmod(clock_minutes, 60.0)))
+		clock_label.text = "%02d:%02d" % [clock_hour, clock_minute]
+	if day_label != null:
+		day_label.text = "DÍA %02d" % calendar_day
 	wave_label.text = "OLEADA  %02d" % wave
 	record_label.text = "RECORD  %06d" % int(_normalize_record(records.get(username, {}))["score"])
 	if ammo_label != null:
@@ -3441,7 +3556,7 @@ func _ensure_life_icons() -> void:
 	var heart_texture: Texture2D = load("res://assets/ui/heart.svg") as Texture2D
 	while life_icons.size() < max_lives:
 		var heart := TextureRect.new()
-		heart.position = Vector2(770 + life_icons.size() * 16, 42)
+		heart.position = Vector2(900 + life_icons.size() * 16, 42)
 		heart.size = Vector2(13, 12)
 		heart.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		heart.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
@@ -3452,9 +3567,9 @@ func _ensure_life_icons() -> void:
 	for i in range(life_icons.size()):
 		var column := i % 5
 		var row := i / 5
-		life_icons[i].position = Vector2(770 + column * 16, 42 + row * 14)
+		life_icons[i].position = Vector2(900 + column * 16, 42 + row * 14)
 	if status_label != null:
-		status_label.position = Vector2(360, 76)
+		status_label.position = Vector2(300, 78)
 
 func _roll_upgrade_rarity(base: Dictionary, allow_legendary: bool = true) -> Dictionary:
 	var result: Dictionary = base.duplicate()
@@ -4079,6 +4194,8 @@ func _save_record() -> void:
 	stats["ammo_reserve"] = ammo_reserve
 	stats["zone"] = zone_index
 	stats["weather"] = weather
+	stats["clock_minutes"] = clock_minutes
+	stats["calendar_day"] = calendar_day
 	stats["resources"] = resource_inventory.duplicate(true)
 	stats["upgrade_levels"] = upgrade_levels.duplicate(true)
 	stats["evolution_unlocked"] = evolution_unlocked.duplicate(true)

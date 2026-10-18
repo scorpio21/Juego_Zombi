@@ -174,6 +174,17 @@ Las probabilidades y duraciones cambian con la dificultad. En Normal, las probab
 
 Durante una partida se intenta cambiar el clima cada `2–3` oleadas, además del ciclo fijo de día/noche. El audio ambiental disponible es: pájaros de día, lluvia, tormenta, niebla, viento y ambiente nocturno; luna roja usa el ambiente nocturno, ceniza tóxica usa niebla y ola de calor usa viento. **La nieve todavía no es un estado climático implementado**.
 
+#### Calendario y estaciones
+
+El HUD muestra la hora simulada, el día, la estación y un icono pixel-art propio. El reloj comienza a las `06:00`, avanza a `4,8` minutos simulados por segundo real en Normal y se guarda al salir de la partida. Cada estación dura `7` días simulados:
+
+- **Primavera** — favorece lluvia y niebla; aumenta ligeramente la visibilidad y genera comida.
+- **Verano** — favorece la ola de calor; reduce un poco la velocidad del jugador y los zombies y genera agua.
+- **Otoño** — favorece lluvia, niebla y tormenta; reduce ligeramente la visibilidad y genera materiales.
+- **Invierno** — favorece niebla y tormenta; oscurece más el escenario, reduce la visibilidad, ralentiza al jugador y refuerza vida/daño de los infectados.
+
+La velocidad del reloj y la duración de cada estación se pueden modificar desde `ClimateSettings`.
+
 Las configuraciones están disponibles en:
 
 ```text

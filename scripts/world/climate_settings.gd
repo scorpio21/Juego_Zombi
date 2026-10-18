@@ -9,6 +9,10 @@ extends Resource
 @export_range(30.0, 1800.0, 1.0, "suffix:s") var day_duration: float = 180.0 ## Duración base del periodo diurno.
 @export_range(30.0, 1800.0, 1.0, "suffix:s") var night_duration: float = 120.0 ## Duración base del periodo nocturno.
 
+@export_category("Reloj y estaciones")
+@export_range(0.1, 60.0, 0.1, "suffix:min/s") var clock_minutes_per_second: float = 4.8 ## Minutos simulados por segundo real.
+@export_range(1, 30, 1, "suffix:días") var days_per_season: int = 7 ## Días simulados que dura cada estación.
+
 @export_category("Probabilidades de clima")
 @export_range(0.0, 1.0, 0.01) var rain_probability: float = 0.28 ## Probabilidad relativa de lluvia.
 @export_range(0.0, 1.0, 0.01) var fog_probability: float = 0.18 ## Probabilidad relativa de niebla.
