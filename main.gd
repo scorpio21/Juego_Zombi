@@ -2946,15 +2946,24 @@ func _update_zombies(delta: float) -> void:
 		var speed := float(zombie["speed"]) * (1.0 + wave * 0.035) * _early_wave_speed_multiplier() * _weather_zombie_speed()
 		var route_target := player_pos
 		var route_index := int(zombie.get("road_target_index", -1))
+		var approach_offset: Vector2 = zombie.get("approach_offset", Vector2.ZERO)
 		if route_index >= 0 and route_index < road_waypoints.size():
 			route_target = road_waypoints[route_index]
 			if zombie["pos"].distance_to(route_target) < 34.0:
 				route_index += 1
 				zombie["road_target_index"] = route_index if route_index < road_waypoints.size() else -1
 				route_target = road_waypoints[route_index] if route_index < road_waypoints.size() else player_pos
+		# Cada infectado tiene un punto de aproximación propio para rodear al
+		# jugador en vez de perseguir exactamente el mismo píxel.
+		if route_index < 0 or zombie["pos"].distance_to(player_pos) < 230.0:
+			route_target += approach_offset
 		var desired := _steer_around_obstacles(zombie["pos"], zombie["pos"].direction_to(route_target))
 		zombie_node.set_navigation_target(route_target)
 		desired = zombie_node.navigation_direction(desired)
+		var separation := _zombie_separation(i, zombie["pos"])
+		var to_target: Vector2 = zombie["pos"].direction_to(route_target)
+		var flank := Vector2(-to_target.y, to_target.x) * sin(float(zombie.get("swarm_phase", 0.0)) + game_time * 1.35) * 0.22
+		desired = (desired + separation * 1.85 + flank).normalized()
 		desired = _steer_around_obstacles(zombie["pos"], desired)
 		var next_zombie_pos: Vector2 = zombie["pos"] + desired * speed * delta
 		zombie["pos"] = _move_with_obstacles(zombie["pos"], next_zombie_pos, float(zombie["radius"]) * 0.72)
@@ -3002,6 +3011,25 @@ func _update_zombies(delta: float) -> void:
 			zombies[i] = zombie
 	if wave_state == "combat" and wave_spawned_count > 0 and zombies.is_empty() and wave_spawned_count >= wave_enemy_target:
 		_complete_wave()
+
+func _zombie_separation(index: int, position: Vector2) -> Vector2:
+	var result := Vector2.ZERO
+	for j in range(zombies.size()):
+		if j == index:
+			continue
+		var other: Dictionary = zombies[j]
+		var other_node = other.get("node")
+		if not is_instance_valid(other_node) or other_node.is_dead:
+			continue
+		var offset: Vector2 = position - other["pos"]
+		var distance := offset.length()
+		var minimum_distance := float(other.get("radius", 20.0)) + 22.0
+		if distance <= 0.01:
+			var angle := float(index * 1.7 + j * 0.83)
+			result += Vector2.from_angle(angle) * 0.8
+		elif distance < minimum_distance:
+			result += offset.normalized() * ((minimum_distance - distance) / minimum_distance)
+	return result.limit_length(1.0)
 
 func _move_with_obstacles(from: Vector2, target: Vector2, radius: float) -> Vector2:
 	var result := target
@@ -3268,7 +3296,9 @@ func _spawn_zombie() -> void:
 		# En niebla entran algo más cerca, pero siguen llegando por la carretera.
 		spawn_pos = p.lerp(player_pos, 0.12)
 		zombie_node.position = spawn_pos
-	zombies.append({"pos": spawn_pos, "speed": float(data.speed) * (1.0 + zone_bonus * 0.18), "radius": rng.randf_range(17.0, 24.0), "phase": rng.randf_range(0.0, 6.0), "type": zombie_type, "node": zombie_node, "data": data, "road_target_index": 0, "attack_multiplier": 1.0 + night_bonus + zone_bonus * 0.25, "animation_row": 1, "hurt_timer": 0.0, "attack_timer": 0.0})
+	var approach_angle := rng.randf_range(0.0, TAU)
+	var approach_distance := rng.randf_range(26.0, 78.0)
+	zombies.append({"pos": spawn_pos, "speed": float(data.speed) * rng.randf_range(0.94, 1.06) * (1.0 + zone_bonus * 0.18), "radius": rng.randf_range(17.0, 24.0), "phase": rng.randf_range(0.0, 6.0), "swarm_phase": rng.randf_range(0.0, TAU), "approach_offset": Vector2.from_angle(approach_angle) * approach_distance, "type": zombie_type, "node": zombie_node, "data": data, "road_target_index": 0, "attack_multiplier": 1.0 + night_bonus + zone_bonus * 0.25, "animation_row": 1, "hurt_timer": 0.0, "attack_timer": 0.0})
 	wave_spawned_count += 1
 
 func _is_valid_zombie_spawn(candidate: Vector2) -> bool:
